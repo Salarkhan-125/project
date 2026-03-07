@@ -1,0 +1,141 @@
+# forge/web/api/main.py
+"""
+Hackforge Web API - Main Entry Point
+Refactored version with organized route structure
+"""
+import asyncio
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+import time
+import sys
+from pathlib import Path
+
+# Add parent directories to path BEFORE any local imports
+API_DIR = Path(__file__).parent
+sys.path.insert(0, str(API_DIR.parent.parent))  # Add forge/ to path
+
+from web.api.config import CORS_ORIGINS, logger
+from web.api.dependencies import db
+from web.api.cleanup import start_cleanup_task
+
+# Import routers directly from their modules
+from web.api.routes.users import router as users_router
+from web.api.routes.campaigns import router as campaigns_router
+from web.api.routes.machines import router as machines_router
+from web.api.routes.flags import router as flags_router
+from web.api.routes.blueprints import router as blueprints_router
+from web.api.routes.configs import router as configs_router
+from web.api.routes.docker import router as docker_router
+from web.api.routes.leaderboard import router as leaderboard_router
+from web.api.routes.stats import router as stats_router
+from web.api.routes.auth import router as auth_router
+
+# ── VulnForge Lab Generator (core/ directory) ────────────────────────────────
+# lab_app.py lives in forge/core/ alongside bridge.py, vfdb.py, vulhub_miner.py
+# We add core/ to sys.path so Python can find it.
+CORE_DIR = API_DIR.parent.parent / "core"
+sys.path.insert(0, str(CORE_DIR))
+from lab_app import router as lab_router
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ============================================================================
+# Lifespan — startup and shutdown logic
+# ============================================================================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ──────────────────────────────────────────────────────────────
+    logger.info("✓ Starting background cleanup task...")
+    cleanup_task = asyncio.create_task(start_cleanup_task())
+
+    yield   # server is running — handle requests
+
+    # ── Shutdown ─────────────────────────────────────────────────────────────
+    logger.info("✓ Stopping background cleanup task...")
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass  # expected — task was cancelled cleanly
+    logger.info("✓ Cleanup task stopped.")
+
+
+# ============================================================================
+# App Initialization
+# ============================================================================
+
+app = FastAPI(
+    title="Hackforge API",
+    description="REST API for Dynamic Vulnerability Training Platform with Database",
+    version="2.1.0",
+    lifespan=lifespan,
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+)
+
+# Register all routers
+app.include_router(users_router)
+app.include_router(campaigns_router)
+app.include_router(machines_router)
+app.include_router(flags_router)
+app.include_router(blueprints_router)
+app.include_router(configs_router)
+app.include_router(docker_router)
+app.include_router(leaderboard_router)
+app.include_router(stats_router)
+app.include_router(auth_router)
+app.include_router(lab_router)       # ← VulnForge lab generator routes
+
+logger.info("✓ All routers registered")
+
+
+# ============================================================================
+# Health Check
+# ============================================================================
+
+@app.get("/health")
+async def health_check():
+    """Health check with database status"""
+    try:
+        db.users.find_one()
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    return {
+        "status": "healthy",
+        "database": db_status,
+        "timestamp": time.time()
+    }
+
+
+# ============================================================================
+# Run Server
+# ============================================================================
+
+if __name__ == "__main__":
+    import uvicorn
+
+    print("""
+╔═══════════════════════════════════════════════════════════╗
+║          HACKFORGE WEB API WITH DATABASE                  ║
+╚═══════════════════════════════════════════════════════════╝
+
+Starting API server with MySql integration...
+    """)
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level="info"
+    )

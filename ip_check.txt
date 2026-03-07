@@ -1,0 +1,19 @@
+web\api\config.py:28: FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+web\api\config.py:38: "http://localhost:3000",
+web\api\config.py:39: "http://127.0.0.1:3000",
+web\api\main.py:58: "http://localhost:3000",
+web\api\main.py:59: "http://127.0.0.1:3000",
+web\api\main.py:60: os.getenv("FRONTEND_URL", "http://localhost:3000"),
+web\api\main.py:230: logger.info(f"Frontend:      {os.getenv('FRONTEND_URL', 'http://localhost:3000')}")
+web\api\main.py:231: logger.info(f"API Docs:      http://localhost:8000/api/docs")
+web\api\main.py:232: logger.info(f"Lab Status:    http://localhost:8000/api/lab/status")
+web\api\routes\auth.py:34: FRONTEND_URL                = os.getenv("FRONTEND_URL", "http://localhost:3000")
+web\frontend\src\components\CreatedAccounts.jsx:7: const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+web\frontend\src\components\Dashboard.jsx:11: const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+web\frontend\src\components\EnterpriseDashboard.jsx:4: const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+web\frontend\src\components\ForgotPassword.jsx:5: const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+web\frontend\src\components\LabChat.jsx:18: const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
+web\frontend\src\components\Login.jsx:14: const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
+web\frontend\src\components\Register.jsx:4: const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+web\frontend\src\components\ResetPassword.jsx:5: const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+web\frontend\src\services\api.js:2: const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
