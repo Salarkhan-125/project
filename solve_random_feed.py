@@ -56,7 +56,7 @@ def insert_solve(session, user_id, username, machine_id):
         user_id        = user_id,
         machine_id     = machine_id,
         campaign_id    = "seed_campaign",
-        submitted_flag = f"HACKFORGE{{sim_{machine_id}}}",
+        submitted_flag = f"CTFWITHAI{{sim_{machine_id}}}",
         correct        = True,
         points_awarded = pts,
         submitted_at   = datetime.utcnow(),

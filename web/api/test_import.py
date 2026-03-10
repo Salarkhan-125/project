@@ -11,7 +11,7 @@ FORGE_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(FORGE_ROOT))
 
 print("="*60)
-print("HACKFORGE IMPORT DIAGNOSTICS")
+print("CTFWITHAI IMPORT DIAGNOSTICS")
 print("="*60)
 print(f"\nForge Root: {FORGE_ROOT}")
 print(f"Python Path: {sys.path[:3]}")

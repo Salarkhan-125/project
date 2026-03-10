@@ -37,11 +37,14 @@ RESET_TOKEN_TTL_MINUTES     = 30
 OTP_TTL_MINUTES             = 5
 OTP_MAX_ATTEMPTS            = 3
 
-JWT_SECRET    = os.getenv("JWT_SECRET", "change-this-to-a-strong-random-secret")
+JWT_SECRET    = os.getenv("JWT_SECRET")
+if not JWT_SECRET:
+    raise ValueError("FATAL ERROR: JWT_SECRET environment variable is not set!")
+
 JWT_ALGORITHM = "HS256"
 JWT_TTL_DAYS  = 7
 
-EMAIL_FROM_NAME    = os.getenv("EMAIL_FROM_NAME", "HackForge")
+EMAIL_FROM_NAME    = os.getenv("EMAIL_FROM_NAME", "ctfWithAi")
 EMAIL_FROM_ADDRESS = os.getenv("EMAIL_FROM_ADDRESS", "onboarding@resend.dev")
 EMAIL_FROM         = f"{EMAIL_FROM_NAME} <{EMAIL_FROM_ADDRESS}>"
 
@@ -50,7 +53,9 @@ ENTERPRISE_ROLES = ("enterprise_staff", "enterprise_admin")
 # ── Internal API key for Appsmith — add INTERNAL_API_KEY to your .env ─────────
 # Generate: python -c "import secrets; print(secrets.token_hex(32))"
 # Set the same value in Appsmith Headers as:  X-Internal-Key: <your_value>
-INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY", "change-this-to-a-strong-internal-key")
+INTERNAL_API_KEY = os.getenv("INTERNAL_API_KEY")
+if not INTERNAL_API_KEY:
+    raise ValueError("FATAL ERROR: INTERNAL_API_KEY environment variable is not set!")
 
 
 # ─── Password Helpers ─────────────────────────────────────────────────────────
@@ -87,7 +92,8 @@ def create_token(
 def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-    except Exception:
+    except Exception as e:
+        logger.warning(f"[SECURITY ALERT] JWT Validation Failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid or expired token.")
 
 
@@ -170,7 +176,7 @@ def _send_otp_email(to_email: str, otp: str, username: str) -> None:
             <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,115,0,0.12);
                         border:1px solid rgba(255,115,0,0.3);display:inline-block;text-align:center;
                         line-height:52px;font-size:24px;">🛡️</div>
-            <h1 style="color:#fff;font-size:20px;font-weight:700;margin:12px 0 4px;">HackForge</h1>
+            <h1 style="color:#fff;font-size:20px;font-weight:700;margin:12px 0 4px;">ctfWithAi</h1>
             <p style="color:#555;font-size:13px;margin:0;">Verify your email address</p>
           </td>
         </tr>
@@ -197,7 +203,7 @@ def _send_otp_email(to_email: str, otp: str, username: str) -> None:
         <tr>
           <td style="border-top:1px solid #1a1a1a;padding-top:20px;">
             <p style="color:#444;font-size:11px;line-height:1.6;margin:0;text-align:center;">
-              If you didn't create a HackForge account, you can safely ignore this email.
+              If you didn't create a ctfWithAi account, you can safely ignore this email.
             </p>
           </td>
         </tr>
@@ -211,7 +217,7 @@ def _send_otp_email(to_email: str, otp: str, username: str) -> None:
         resend.Emails.send({
             "from":    EMAIL_FROM,
             "to":      to_email,
-            "subject": f"{otp} is your HackForge verification code",
+            "subject": f"{otp} is your ctfWithAi verification code",
             "html":    html,
         })
     except Exception as e:
@@ -233,7 +239,7 @@ def _send_reset_email(to_email: str, reset_link: str) -> None:
             <div style="width:52px;height:52px;border-radius:14px;background:rgba(255,115,0,0.12);
                         border:1px solid rgba(255,115,0,0.3);display:inline-block;text-align:center;
                         line-height:52px;font-size:24px;">🛡️</div>
-            <h1 style="color:#fff;font-size:20px;font-weight:700;margin:12px 0 4px;">HackForge</h1>
+            <h1 style="color:#fff;font-size:20px;font-weight:700;margin:12px 0 4px;">ctfWithAi</h1>
             <p style="color:#555;font-size:13px;margin:0;">Password Reset Request</p>
           </td>
         </tr>
@@ -278,7 +284,7 @@ def _send_reset_email(to_email: str, reset_link: str) -> None:
         resend.Emails.send({
             "from":    EMAIL_FROM,
             "to":      to_email,
-            "subject": "HackForge — Password Reset Request",
+            "subject": "ctfWithAi — Password Reset Request",
             "html":    html,
         })
     except Exception as e:
@@ -297,6 +303,7 @@ async def login(request: Request, body: LoginRequest):
     user = db.get_any_user_by_email(email)
 
     if not user or not verify_password(body.password, user.get("password", "")):
+        logger.warning(f"[SECURITY ALERT] Failed login attempt for email: {email} from IP: {request.client.host}")
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     user_id         = user.get("user_id")
@@ -381,7 +388,7 @@ async def register(request: Request, body: RegisterRequest):
             "verified": True,
         }
 
-    otp        = str(random.randint(1000, 9999))
+    otp        = str(secrets.randbelow(9000) + 1000)
     expires_at = datetime.utcnow() + timedelta(minutes=OTP_TTL_MINUTES)
 
     db.create_pending_registration({
@@ -427,7 +434,7 @@ async def verify_otp(request: Request, body: VerifyOTPRequest):
         db.delete_pending_registration(email)
         raise HTTPException(status_code=400, detail="Too many wrong attempts. Please sign up again.")
 
-    if otp != pending["otp"]:
+    if not secrets.compare_digest(otp, pending["otp"]):
         new_attempts = db.increment_otp_attempts(email)
         remaining    = OTP_MAX_ATTEMPTS - new_attempts
         if remaining <= 0:
@@ -596,7 +603,7 @@ async def enterprise_create_user(
     }
 
 
-# ─── NEW: Internal endpoint — HackForge team creates enterprise org + admin ───
+# ─── NEW: Internal endpoint — ctfWithAi team creates enterprise org + admin ───
 # Called ONLY via Appsmith by you. Protected by X-Internal-Key header.
 # Add INTERNAL_API_KEY=<your_secret> to your .env file.
 # Set the same value in Appsmith Headers: X-Internal-Key → <your_secret>
@@ -611,7 +618,8 @@ async def create_enterprise_admin(request: Request, body: EnterpriseAdminCreateR
 
     # ── Verify internal API key ───────────────────────────────────────────────
     provided_key = request.headers.get("X-Internal-Key", "")
-    if not provided_key or provided_key != INTERNAL_API_KEY:
+    if not provided_key or not secrets.compare_digest(provided_key, INTERNAL_API_KEY):
+        logger.warning(f"[SECURITY ALERT] Unauthorized attempt to access Tier 1 Enterprise internal API from IP: {request.client.host}")
         raise HTTPException(status_code=403, detail="Access denied.")
 
     # ── Validate inputs ───────────────────────────────────────────────────────
@@ -746,3 +754,54 @@ async def update_enterprise_staff(
         raise HTTPException(status_code=500, detail="Failed to update account. Please try again.")
 
     return {"message": "Staff account updated successfully.", "updated_fields": list(update_fields.keys())}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STUDENT LOGIN — authenticate students using account_id + password
+# ══════════════════════════════════════════════════════════════════════════════
+
+class StudentLoginRequest(BaseModel):
+    account_id: str
+    password:   str
+
+@router.post("/student-login")
+async def student_login(body: StudentLoginRequest, request: Request):
+    """
+    Authenticate a student using their account_id (roll number) and password
+    (reversed roll number). Returns a JWT with student role details.
+    """
+    account_id = body.account_id.strip()
+    password   = body.password.strip()
+
+    if not account_id or not password:
+        raise HTTPException(status_code=400, detail="Account ID and password are required.")
+
+    # Look up in student_machine_instances
+    student = db.get_student_by_account_id(account_id)
+    if not student:
+        raise HTTPException(status_code=401, detail="Invalid account ID or password.")
+
+    # Verify bcrypt password
+    if not bcrypt.checkpw(password.encode("utf-8"), student["hashed_password"].encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Invalid account ID or password.")
+
+    # Create JWT for student
+    token = create_token(
+        user_id=f"student_{student['instance_id']}",
+        username=student["student_name"],
+        role="student",
+        organization_id=student.get("organization_id"),
+    )
+
+    logger.info(f"Student login: {account_id} (instance={student['instance_id']})")
+
+    return {
+        "token":         token,
+        "userId":        f"student_{student['instance_id']}",
+        "username":      student["student_name"],
+        "role":          "student",
+        "instance_id":   student["instance_id"],
+        "assignment_id": student["assignment_id"],
+        "machine_id":    student["machine_id"],
+        "redirect_url":  "/student/dashboard",
+    }

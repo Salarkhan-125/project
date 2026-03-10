@@ -12,6 +12,14 @@ const ContainerDebug = () => {
     fetchData();
   }, []);
 
+  if (process.env.NODE_ENV === 'production') {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <p className="text-gray-600 text-sm">Not available in production.</p>
+      </div>
+    );
+  }
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -79,7 +87,7 @@ const ContainerDebug = () => {
               return (
                 containerName.includes(machine.machine_id.substring(0, 8)) ||
                 containerName.includes(machine.machine_id) ||
-                containerName.startsWith('hackforge_machine_')
+                containerName.startsWith('ctfWithAi_machine_')
               );
             });
 
@@ -106,9 +114,8 @@ const ContainerDebug = () => {
                           {container.Names?.[0] || container.Name}
                         </code>
                         <p className="text-sm text-gray-400 mt-2">Status:</p>
-                        <span className={`text-xs font-semibold ${
-                          container.State === 'running' ? 'text-green-500' : 'text-gray-500'
-                        }`}>
+                        <span className={`text-xs font-semibold ${container.State === 'running' ? 'text-green-500' : 'text-gray-500'
+                          }`}>
                           {container.State}
                         </span>
                         <button
@@ -133,13 +140,12 @@ const ContainerDebug = () => {
 
         {/* Test Result */}
         {testResult && (
-          <div className={`p-6 rounded-xl border ${
-            testResult.success 
-              ? 'bg-green-950/20 border-green-500/50' 
-              : testResult.loading
+          <div className={`p-6 rounded-xl border ${testResult.success
+            ? 'bg-green-950/20 border-green-500/50'
+            : testResult.loading
               ? 'bg-blue-950/20 border-blue-500/50'
               : 'bg-red-950/20 border-red-500/50'
-          }`}>
+            }`}>
             <h2 className="text-xl font-bold mb-4">Test Result</h2>
             <pre className="text-xs bg-black p-4 rounded overflow-auto">
               {testResult.message}

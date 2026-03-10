@@ -1,0 +1,11 @@
+{
+  "machine_id": "machine_c6fc8ee7",
+  "job_id": "c6fc8ee7-041c-4618-987f-eab7fad166da",
+  "cve_id": "CVE-2022-22965",
+  "difficulty": "easy",
+  "port": 8939,
+  "flag_location": "/flag.txt",
+  "flag_content": "FLAG{VULNFORGE_USER_E862A65_OWNED}",
+  "service_name": "spring",
+  "access_url": "http://localhost:8939"
+}

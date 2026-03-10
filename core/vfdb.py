@@ -90,6 +90,25 @@ def init_db():
             source_url      TEXT,
             fetched_at      TEXT DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS ctf_challenges (
+            challenge_id    TEXT PRIMARY KEY,
+            name            TEXT NOT NULL,
+            source          TEXT NOT NULL,     -- 'ctftraining' | 'sniperoj' | 'omega-coder'
+            repo_path       TEXT NOT NULL,     -- path within the repo (e.g. 'web/baby-sqli')
+            category        TEXT DEFAULT 'web',-- 'web' | 'pwn' | 'misc' | 'crypto'
+            vuln_types      TEXT DEFAULT '[]', -- JSON array: ["sqli", "ssti", "rce", ...]
+            description     TEXT DEFAULT '',
+            compose_yml     TEXT,
+            dockerfile      TEXT,
+            port            INTEGER DEFAULT 80,
+            difficulty      TEXT DEFAULT 'medium',
+            tags            TEXT DEFAULT '[]', -- JSON array of tags
+            fetched_at      TEXT DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ctf_source ON ctf_challenges(source);
+        CREATE INDEX IF NOT EXISTS idx_ctf_category ON ctf_challenges(category);
         """)
     print(f"[DB] Initialized: {DB_PATH}")
 
@@ -291,6 +310,74 @@ def get_install_strategy(cve_id: str) -> dict | None:
         r = dict(row)
         r["extra_commands"] = json.loads(r.get("extra_commands") or "[]")
         return r
+
+# ─────────────────────────────────────────────
+# CTF CHALLENGES CRUD
+# ─────────────────────────────────────────────
+
+def store_ctf_challenge(challenge_id: str, name: str, source: str,
+                         repo_path: str, category: str = "web",
+                         vuln_types: list = None, description: str = "",
+                         compose_yml: str = "", dockerfile: str = "",
+                         port: int = 80, difficulty: str = "medium",
+                         tags: list = None):
+    with get_db() as db:
+        db.execute(
+            """INSERT OR REPLACE INTO ctf_challenges
+               (challenge_id, name, source, repo_path, category,
+                vuln_types, description, compose_yml, dockerfile,
+                port, difficulty, tags)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (challenge_id, name, source, repo_path, category,
+             json.dumps(vuln_types or []), description,
+             compose_yml or "", dockerfile or "", port, difficulty,
+             json.dumps(tags or []))
+        )
+
+
+def get_ctf_challenge(challenge_id: str) -> dict | None:
+    with get_db() as db:
+        row = db.execute(
+            "SELECT * FROM ctf_challenges WHERE challenge_id = ?",
+            (challenge_id,)
+        ).fetchone()
+        if not row:
+            return None
+        r = dict(row)
+        r["vuln_types"] = json.loads(r.get("vuln_types") or "[]")
+        r["tags"] = json.loads(r.get("tags") or "[]")
+        return r
+
+
+def list_ctf_challenges(source: str = None, category: str = None) -> list[dict]:
+    with get_db() as db:
+        query = "SELECT * FROM ctf_challenges WHERE 1=1"
+        params = []
+        if source:
+            query += " AND source = ?"
+            params.append(source)
+        if category:
+            query += " AND category = ?"
+            params.append(category)
+        query += " ORDER BY name ASC"
+        rows = db.execute(query, params).fetchall()
+        results = []
+        for row in rows:
+            r = dict(row)
+            r["vuln_types"] = json.loads(r.get("vuln_types") or "[]")
+            r["tags"] = json.loads(r.get("tags") or "[]")
+            results.append(r)
+        return results
+
+
+def get_ctf_count(source: str = None) -> int:
+    with get_db() as db:
+        if source:
+            return db.execute(
+                "SELECT COUNT(*) FROM ctf_challenges WHERE source = ?",
+                (source,)
+            ).fetchone()[0]
+        return db.execute("SELECT COUNT(*) FROM ctf_challenges").fetchone()[0]
 
 
 if __name__ == "__main__":

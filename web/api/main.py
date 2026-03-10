@@ -1,15 +1,18 @@
 """
-HackForge API Server - VulnForge Edition
+ctfWithAi API Server - VulnForge Edition
 ==========================================
 Main FastAPI application with VulnForge Lab Chat integration.
 """
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 import os
 import sys
 from pathlib import Path
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
 
 # ── FIX: limiter is now created in limiter.py to avoid circular import ────────
 # Previously created here: limiter = Limiter(key_func=get_remote_address)
@@ -37,16 +40,33 @@ from web.api.config import logger, CORS_ORIGINS
 # ══════════════════════════════════════════════════════════════════════════════
 
 app = FastAPI(
-    title="HackForge API",
+    title="ctfWithAi API",
     description="VulnForge Lab - AI-Powered Vulnerable Machine Generation",
     version="3.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
 
+# Initialize Sentry for Error Tracking and Alerts
+SENTRY_DSN = os.getenv("SENTRY_DSN")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        enable_tracing=True,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+        integrations=[FastApiIntegration()],
+    )
+    logger.info("✓ Sentry SDK initialized for Monitoring & Alerting")
+
 # Wire up rate limiter
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    logger.warning(f"[SECURITY ALERT] Rate limit exceeded on {request.url.path} from {request.client.host}")
+    return _rate_limit_exceeded_handler(request, exc)
+
+app.add_exception_handler(RateLimitExceeded, custom_rate_limit_handler)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CORS Configuration
@@ -54,11 +74,24 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,   
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,   
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = "default-src 'self'"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin"
+    response.headers["Permissions-Policy"] = "geolocation=()"
+    return response
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Import Routers
@@ -165,6 +198,16 @@ except ImportError as e:
 except Exception as e:
     logger.error(f"Unexpected error loading Students routes: {e}", exc_info=True)
 
+# Machine Assignments (Enterprise Staff)
+try:
+    from web.api.routes.assignments import router as assignments_router
+    app.include_router(assignments_router)
+    logger.info("✓ Assignments routes loaded")
+except ImportError as e:
+    logger.warning(f"Assignments routes not available: {e}")
+except Exception as e:
+    logger.error(f"Unexpected error loading Assignments routes: {e}", exc_info=True)
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Health Check
@@ -174,7 +217,7 @@ except Exception as e:
 async def health_check():
     return {
         "status": "healthy",
-        "message": "HackForge VulnForge API is running",
+        "message": "ctfWithAi VulnForge API is running",
         "version": "3.0.0"
     }
 
@@ -236,7 +279,7 @@ async def startup_event():
     _server = _re.sub(r':\d+$', '', _raw)   # remove trailing ":port" if present
     _port   = os.getenv("APP_PORT", "8000")
     logger.info("=" * 60)
-    logger.info("HackForge VulnForge API Starting")
+    logger.info("ctfWithAi VulnForge API Starting")
     logger.info("=" * 60)
     logger.info(f"Frontend:      {os.getenv('FRONTEND_URL', 'http://localhost:3000')}")
     logger.info(f"API Docs:      {_server}:{_port}/api/docs")

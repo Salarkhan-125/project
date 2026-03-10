@@ -56,11 +56,12 @@ from collections import defaultdict
 from datetime import datetime
 from threading import Lock
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 
 from web.api.config import logger
 from web.api.dependencies import db, orchestrator
 from web.api.models.flag import FlagSubmitRequest
+from web.api.routes.auth import get_current_user
 
 # constant-time HMAC comparison — never plain == on flag strings [FIX-F1]
 from database import verify_flag
@@ -73,7 +74,7 @@ router = APIRouter(prefix="/api/flags", tags=["flags"])
 FLAG_MAX_LENGTH = 50
 
 FLAG_PATTERN = re.compile(
-    r'^HACKFORGE\{[a-zA-Z0-9_\-\.!@#$%^&*()\[\]+=?/,]{1,40}\}$'
+    r'^CTFWITHAI\{[a-zA-Z0-9_\-\.!@#$%^&*()\[\]+=?/,]{1,40}\}$'
 )
 
 RATE_LIMIT_MAX_ATTEMPTS = 2
@@ -141,7 +142,7 @@ def _validate_flag_input(raw_flag: str) -> str:
     if not FLAG_PATTERN.match(cleaned):
         raise HTTPException(
             status_code=422,
-            detail="Invalid flag format. Expected: HACKFORGE{...}",
+            detail="Invalid flag format. Expected: CTFWITHAI{...}",
         )
 
     return cleaned
@@ -150,7 +151,7 @@ def _validate_flag_input(raw_flag: str) -> str:
 # ─── Endpoint ─────────────────────────────────────────────────────────────────
 
 @router.post("/validate")
-async def validate_flag(request: FlagSubmitRequest, req: Request):
+async def validate_flag(request: FlagSubmitRequest, req: Request, current_user: dict = Depends(get_current_user)):
     """
     Validate a submitted flag.
 
@@ -167,6 +168,9 @@ async def validate_flag(request: FlagSubmitRequest, req: Request):
     """
     client_ip = req.client.host if req.client else "unknown"
 
+    if request.user_id != current_user.get("user_id"):
+        raise HTTPException(status_code=403, detail="Cannot submit flags for another user.")
+
     # ── 1. Validate and sanitize the submitted flag ───────────────────────────
     cleaned_flag = _validate_flag_input(request.flag)
 
@@ -182,7 +186,7 @@ async def validate_flag(request: FlagSubmitRequest, req: Request):
     machine_info = _resolve_machine(request.machine_id, campaign_id)
     if not machine_info:
         logger.warning(
-            "Flag submission for unknown machine '%s' from user '%s' IP=%s",
+            "[SECURITY ALERT] Flag submission for unknown machine '%s' from user '%s' IP=%s",
             request.machine_id, request.user_id, client_ip,
         )
         raise HTTPException(
@@ -227,7 +231,7 @@ async def validate_flag(request: FlagSubmitRequest, req: Request):
     )
     if limited:
         logger.warning(
-            "Rate limit: user='%s' machine='%s' campaign='%s' "
+            "[SECURITY ALERT] Rate limit: user='%s' machine='%s' campaign='%s' "
             "IP=%s retry_after=%ss",
             request.user_id, request.machine_id, campaign_id,
             client_ip, retry_after,

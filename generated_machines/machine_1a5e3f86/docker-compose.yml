@@ -1,0 +1,12 @@
+services:
+  cxf:
+    image: vulhub/apache-cxf:3.2.14
+    ports:
+    - 8313:8080
+    volumes:
+    - ./flag.txt:/app/flag.txt:ro
+    networks:
+    - vf_1a5e3f86
+networks:
+  vf_1a5e3f86:
+    driver: bridge

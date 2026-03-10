@@ -661,7 +661,7 @@ const CampaignDetail = ({ campaignId: propCampaignId, onBack }) => {
                           <div className="flex gap-2">
                             <input
                               type="text"
-                              placeholder="HACKFORGE{...}"
+                              placeholder="CTFWITHAI{...}"
                               value={
                                 selectedMachine === machine.machine_id
                                   ? flagInput

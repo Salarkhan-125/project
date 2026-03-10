@@ -5,8 +5,8 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // ─── Enterprise Admin Dashboard ──────────────────────────────────────────────
 const EnterpriseDashboard = () => {
-    const role = localStorage.getItem('role') || '';
-    const username = localStorage.getItem('username') || 'Admin';
+    const [role] = useState(() => localStorage.getItem('role') || '');
+    const [username] = useState(() => localStorage.getItem('username') || 'Admin');
 
     // Guard: only enterprise_admin can see this
     if (role !== 'enterprise_admin') {
@@ -27,14 +27,7 @@ const EnterpriseDashboard = () => {
 
     return (
         <div className="max-w-5xl mx-auto px-6 py-8">
-            <style>{`
-                @keyframes fadeUp {
-                    from { opacity: 0; transform: translateY(16px); }
-                    to   { opacity: 1; transform: translateY(0); }
-                }
-                .fade-in { animation: fadeUp 0.4s ease both; }
-                .fade-in-d { animation: fadeUp 0.4s ease 0.1s both; }
-            `}</style>
+
 
             {/* Header */}
             <div className="flex items-center gap-4 mb-8 fade-in">

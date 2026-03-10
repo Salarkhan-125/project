@@ -1,7 +1,7 @@
 // src/components/LabChat.jsx
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Send, ExternalLink, Loader2, CheckCircle, XCircle, Clock, Zap, Shield, Terminal } from "lucide-react";
-import hackforgeLogo from "../assets/logo.png";
+import ctfWithAiLogo from "../assets/logo.png";
 
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
 const POLL_INTERVAL_MS = 5000;
@@ -10,7 +10,7 @@ const TS = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2
 
 const SpinLogo = ({ spin = false, size = 32 }) => (
   <img
-    src={hackforgeLogo}
+    src={ctfWithAiLogo}
     alt="VulnAI"
     width={size}
     height={size}
@@ -21,10 +21,10 @@ const SpinLogo = ({ spin = false, size = 32 }) => (
 
 const StatusBadge = ({ status }) => {
   const cfg = {
-    pending:    { Icon: Clock,       cls: "text-amber-400   bg-amber-400/10   border-amber-400/30",   label: "Queued"   },
-    generating: { Icon: Loader2,     cls: "text-sky-400     bg-sky-400/10     border-sky-400/30",     label: "Building" },
-    done:       { Icon: CheckCircle, cls: "text-emerald-400 bg-emerald-400/10 border-emerald-400/30", label: "Ready"    },
-    failed:     { Icon: XCircle,     cls: "text-red-400     bg-red-400/10     border-red-400/30",     label: "Failed"   },
+    pending: { Icon: Clock, cls: "text-amber-400   bg-amber-400/10   border-amber-400/30", label: "Queued" },
+    generating: { Icon: Loader2, cls: "text-sky-400     bg-sky-400/10     border-sky-400/30", label: "Building" },
+    done: { Icon: CheckCircle, cls: "text-emerald-400 bg-emerald-400/10 border-emerald-400/30", label: "Ready" },
+    failed: { Icon: XCircle, cls: "text-red-400     bg-red-400/10     border-red-400/30", label: "Failed" },
   }[status] || { Icon: Clock, cls: "text-amber-400 bg-amber-400/10 border-amber-400/30", label: "Queued" };
   return (
     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold tracking-wide border ${cfg.cls}`}>
@@ -51,16 +51,16 @@ const JobCard = ({ job }) => (
 );
 
 const SUGGESTIONS = [
-  { label: "CVE-2021-44228", sub: "Log4Shell RCE"   },
-  { label: "CVE-2022-22965", sub: "Spring4Shell"    },
-  { label: "SQL Injection",  sub: "MySQL target"    },
-  { label: "SSRF Attack",    sub: "Internal pivot"  },
+  { label: "CVE-2021-44228", sub: "Log4Shell RCE" },
+  { label: "CVE-2022-22965", sub: "Spring4Shell" },
+  { label: "SQL Injection", sub: "MySQL target" },
+  { label: "SSRF Attack", sub: "Internal pivot" },
 ];
 
 const WelcomeScreen = ({ onSuggest }) => (
   <div className="flex flex-col items-center justify-center h-full pb-16 px-6 select-none">
     <div className="mb-6">
-      <img src={hackforgeLogo} alt="VulnAI" className="w-16 h-16 object-contain" />
+      <img src={ctfWithAiLogo} alt="VulnAI" className="w-16 h-16 object-contain" />
     </div>
     <h1 className="text-2xl font-bold text-white mb-1 tracking-tight">Vuln AI</h1>
     <p className="text-gray-500 text-sm mb-8 text-center max-w-xs leading-relaxed">
@@ -69,8 +69,8 @@ const WelcomeScreen = ({ onSuggest }) => (
     <div className="flex flex-wrap gap-2 justify-center mb-8">
       {[
         { icon: Terminal, text: "Real Docker Labs" },
-        { icon: Shield,   text: "CVE Database"    },
-        { icon: Zap,      text: "Instant Deploy"  },
+        { icon: Shield, text: "CVE Database" },
+        { icon: Zap, text: "Instant Deploy" },
       ].map(({ icon: Icon, text }) => (
         <div key={text} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-900 border border-gray-800 text-xs text-gray-400">
           <Icon className="w-3.5 h-3.5 text-orange-500" />{text}
@@ -98,11 +98,10 @@ const Message = ({ msg, jobMap }) => {
       {!isUser && <div className="flex-shrink-0 mt-0.5"><SpinLogo size={26} /></div>}
       <div className={`flex flex-col gap-1 max-w-[75%] ${isUser ? "items-end" : "items-start"}`}>
         {!isUser && <span className="text-[11px] text-orange-500 font-semibold tracking-wide px-1">VULN AI</span>}
-        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-          isUser
+        <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${isUser
             ? "bg-orange-500 text-white rounded-tr-sm shadow-lg shadow-orange-500/20"
             : "bg-[#111] border border-gray-800/80 text-gray-100 rounded-tl-sm"
-        }`}>
+          }`}>
           {msg.text}
         </div>
         {msg.jobId && jobMap[msg.jobId] && <JobCard job={jobMap[msg.jobId]} />}
@@ -127,13 +126,13 @@ const TypingIndicator = () => (
 );
 
 export default function LabChat() {
-  const sessionId   = useRef(localStorage.getItem("userId") || "session_" + randomId());
+  const sessionId = useRef(localStorage.getItem("userId") || "session_" + randomId());
   const [messages, setMessages] = useState([]);
-  const [input, setInput]       = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [jobMap, setJobMap]     = useState({});
-  const pollingRef  = useRef({});
-  const bottomRef   = useRef(null);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [jobMap, setJobMap] = useState({});
+  const pollingRef = useRef({});
+  const bottomRef = useRef(null);
   const textareaRef = useRef(null);
 
   const hasUserMessage = messages.some(m => m.role === "user");
@@ -158,15 +157,14 @@ export default function LabChat() {
             : `❌ Lab failed: ${data.error || "unknown error"}`;
           setMessages(prev => [...prev, { id: randomId(), role: "assistant", ts: TS(), text: note, jobId }]);
         }
-      } catch (_) {}
+      } catch (_) { }
     };
     tick();
     pollingRef.current[jobId] = setInterval(tick, POLL_INTERVAL_MS);
   }, []);
 
   useEffect(() => {
-    const refs = pollingRef.current;
-    return () => Object.values(refs).forEach(clearInterval);
+    return () => Object.values(pollingRef.current).forEach(clearInterval);
   }, []);
 
   const sendMessage = async (override) => {
@@ -214,12 +212,7 @@ export default function LabChat() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-73px)] bg-[#080808]">
-      <style>{`
-        @keyframes msgIn {
-          from { opacity: 0; transform: translateY(6px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+
 
 
 
@@ -243,17 +236,22 @@ export default function LabChat() {
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={e => setInput(e.target.value)}
+              onChange={e => {
+                setInput(e.target.value);
+                requestAnimationFrame(() => {
+                  if (textareaRef.current) {
+                    textareaRef.current.style.height = "auto";
+                    textareaRef.current.style.height =
+                      Math.min(textareaRef.current.scrollHeight, 100) + "px";
+                  }
+                });
+              }}
               onKeyDown={handleKey}
               placeholder="Ask about a CVE or describe a vulnerability…"
               rows={1}
               disabled={loading}
               className="flex-1 resize-none bg-transparent text-sm text-gray-100 placeholder-gray-600 outline-none disabled:opacity-40 leading-relaxed"
               style={{ maxHeight: "100px", overflowY: "auto" }}
-              onInput={e => {
-                e.target.style.height = "auto";
-                e.target.style.height = Math.min(e.target.scrollHeight, 100) + "px";
-              }}
             />
             <button onClick={() => sendMessage()}
               disabled={loading || !input.trim()}

@@ -9,7 +9,9 @@ import {
   AlertCircle,
   Building2,
   Skull,
+  GraduationCap,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const API_BASE = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
@@ -41,8 +43,11 @@ const Login = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // ── Portal toggle (replaces old account_type) ──
+  // ── Portal toggle ──
   const [portal, setPortal] = useState("individual"); // 'individual' | 'enterprise'
+  const [studentLogin, setStudentLogin] = useState(false);       // student ID mode
+
+  const navigate = useNavigate();
 
   // ── Submit ──
   const handleSubmit = async (e) => {
@@ -55,18 +60,33 @@ const Login = ({ onLoginSuccess }) => {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`${API_BASE}/api/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, portal }),
-      });
+      let data;
 
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || body.message || "Invalid credentials");
+      if (studentLogin) {
+        // ── Student login path ──
+        const response = await fetch(`${API_BASE}/api/auth/student-login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ account_id: email, password }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail || body.message || "Invalid credentials");
+        }
+        data = await response.json();
+      } else {
+        // ── Normal login path ──
+        const response = await fetch(`${API_BASE}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, portal }),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.detail || body.message || "Invalid credentials");
+        }
+        data = await response.json();
       }
-
-      const data = await response.json();
 
       // Store user data in localStorage
       if (data.token) localStorage.setItem("token", data.token);
@@ -74,17 +94,18 @@ const Login = ({ onLoginSuccess }) => {
       if (data.username) localStorage.setItem("username", data.username);
       if (data.role) localStorage.setItem("role", data.role);
 
-      // ── Role-based redirection ──
+      // Student-specific data
+      if (data.instance_id) localStorage.setItem("instance_id", data.instance_id);
+      if (data.assignment_id) localStorage.setItem("assignment_id", data.assignment_id);
+      if (data.machine_id) localStorage.setItem("machine_id", data.machine_id);
+
+      // ── Role-based redirection using React Router (no full page reload) ──
       const redirectUrl = data.redirect_url || "/dashboard";
       if (onLoginSuccess) {
         onLoginSuccess(data);
-        // After login state set, navigate to the correct route
-        setTimeout(() => {
-          window.location.href = redirectUrl;
-        }, 100);
-      } else {
-        window.location.href = redirectUrl;
       }
+      navigate(redirectUrl);
+
     } catch (err) {
       setError(err.message || "Login failed. Please try again.");
     } finally {
@@ -92,9 +113,10 @@ const Login = ({ onLoginSuccess }) => {
     }
   };
 
-  // ── Switch portal and reset errors ──
+  // ── Switch portal and reset state ──
   const switchPortal = (type) => {
     setPortal(type);
+    setStudentLogin(false);
     setError(null);
   };
 
@@ -102,21 +124,35 @@ const Login = ({ onLoginSuccess }) => {
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center relative overflow-hidden">
-      {/* Ambient glow */}
+
+      {/* Ambient glow — color changes per mode */}
       <div
         className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] rounded-full blur-3xl opacity-10 pointer-events-none"
         style={{
-          background: `radial-gradient(ellipse, ${isEnterprise ? "#3b82f6" : "#ff7300"}, transparent 70%)`,
+          background: `radial-gradient(ellipse, ${studentLogin ? "#ef4444" : isEnterprise ? "#3b82f6" : "#ff7300"
+            }, transparent 70%)`,
         }}
       />
       <GridBg />
 
+      {/*
+        ── WHY THE <style> TAG MUST STAY HERE ───────────────────────────────
+        The CSS classes below (.input-field, .login-btn, .tab-btn) use
+        dynamic JavaScript values — isEnterprise and studentLogin state —
+        to switch colors at runtime (e.g. orange vs blue vs red).
+
+        These CANNOT be moved to a global CSS file (index.css) because
+        static CSS files cannot read React state.
+
+        This is the correct and intentional pattern. Do NOT remove this block.
+        ─────────────────────────────────────────────────────────────────────
+      */}
       <style>{`
         @keyframes fadeUp {
           from { opacity: 0; transform: translateY(20px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .fade-up { animation: fadeUp 0.45s ease both; }
+        .fade-up   { animation: fadeUp 0.45s ease both; }
         .fade-up-1 { animation: fadeUp 0.45s ease 0.05s both; }
         .fade-up-2 { animation: fadeUp 0.45s ease 0.10s both; }
         .fade-up-3 { animation: fadeUp 0.45s ease 0.15s both; }
@@ -134,12 +170,14 @@ const Login = ({ onLoginSuccess }) => {
           transition: border-color 0.2s;
         }
         .input-field::placeholder { color: #3f3f3f; }
-        .input-field:focus { border-color: ${isEnterprise ? "#3b82f6" : "#ff7300"}; }
+        .input-field:focus {
+          border-color: ${studentLogin ? "#ef4444" : isEnterprise ? "#3b82f6" : "#ff7300"};
+        }
 
         .login-btn {
           width: 100%;
           padding: 0.7rem;
-          background: ${isEnterprise ? "#3b82f6" : "#ff7300"};
+          background: ${studentLogin ? "#ef4444" : isEnterprise ? "#3b82f6" : "#ff7300"};
           color: #fff;
           font-size: 0.875rem;
           font-weight: 700;
@@ -147,11 +185,19 @@ const Login = ({ onLoginSuccess }) => {
           border-radius: 0.625rem;
           cursor: pointer;
           transition: background 0.2s, transform 0.1s;
-          display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.5rem;
         }
-        .login-btn:hover:not(:disabled) { background: ${isEnterprise ? "#2563eb" : "#e66a00"}; }
+        .login-btn:hover:not(:disabled) {
+          background: ${studentLogin ? "#dc2626" : isEnterprise ? "#2563eb" : "#e66a00"};
+        }
         .login-btn:active:not(:disabled) { transform: scale(0.98); }
-        .login-btn:disabled { background: ${isEnterprise ? "#1e3a5f" : "#4a3000"}; cursor: not-allowed; }
+        .login-btn:disabled {
+          background: ${studentLogin ? "#5a1a1a" : isEnterprise ? "#1e3a5f" : "#4a3000"};
+          cursor: not-allowed;
+        }
 
         .tab-btn {
           flex: 1;
@@ -184,6 +230,7 @@ const Login = ({ onLoginSuccess }) => {
 
       {/* Card */}
       <div className="relative z-10 w-full max-w-sm mx-4">
+
         {/* Logo / Brand */}
         <div className="text-center mb-6 fade-up">
           <div
@@ -192,7 +239,10 @@ const Login = ({ onLoginSuccess }) => {
               background: isEnterprise
                 ? "rgba(59, 130, 246, 0.12)"
                 : "rgba(255, 115, 0, 0.12)",
-              border: `1px solid ${isEnterprise ? "rgba(59, 130, 246, 0.3)" : "rgba(255, 115, 0, 0.3)"}`,
+              border: `1px solid ${isEnterprise
+                  ? "rgba(59, 130, 246, 0.3)"
+                  : "rgba(255, 115, 0, 0.3)"
+                }`,
             }}
           >
             <Shield
@@ -201,10 +251,14 @@ const Login = ({ onLoginSuccess }) => {
             />
           </div>
           <h1 className="text-2xl font-bold text-white tracking-tight">
-            HackForge
+            ctfWithAi
           </h1>
           <p className="text-gray-600 text-sm mt-1">
-            {isEnterprise ? "Enterprise sign in" : "Sign in to your account"}
+            {studentLogin
+              ? "Student sign in"
+              : isEnterprise
+                ? "Enterprise sign in"
+                : "Sign in to your account"}
           </p>
         </div>
 
@@ -213,7 +267,8 @@ const Login = ({ onLoginSuccess }) => {
           <button
             type="button"
             onClick={() => switchPortal("individual")}
-            className={`tab-btn ${portal === "individual" ? "active-individual" : ""}`}
+            className={`tab-btn ${portal === "individual" ? "active-individual" : ""
+              }`}
           >
             <Skull className="w-3.5 h-3.5" />
             Join as Hacker
@@ -221,15 +276,39 @@ const Login = ({ onLoginSuccess }) => {
           <button
             type="button"
             onClick={() => switchPortal("enterprise")}
-            className={`tab-btn ${portal === "enterprise" ? "active-enterprise" : ""}`}
+            className={`tab-btn ${portal === "enterprise" ? "active-enterprise" : ""
+              }`}
           >
             <Building2 className="w-3.5 h-3.5" />
-            HackForge for Business
+            ctfWithAi for Business
           </button>
         </div>
 
+        {/* ── Student Login Toggle — only visible on enterprise portal ── */}
+        {isEnterprise && (
+          <div className="mb-4 fade-up">
+            <button
+              type="button"
+              onClick={() => {
+                setStudentLogin((v) => !v);
+                setError(null);
+              }}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold border transition-all ${studentLogin
+                  ? "bg-red-500/10 text-red-400 border-red-500/30"
+                  : "bg-gray-900/50 text-gray-500 border-gray-800 hover:border-gray-700 hover:text-gray-400"
+                }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              {studentLogin
+                ? "← Back to Staff / Admin Login"
+                : "Sign in with Student ID"}
+            </button>
+          </div>
+        )}
+
         {/* Form card */}
         <div className="rounded-2xl border border-gray-900 bg-gray-950/70 backdrop-blur px-6 py-7 space-y-4">
+
           {/* Error banner */}
           {error && (
             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg bg-red-500/10 border border-red-500/25 fade-up">
@@ -239,18 +318,27 @@ const Login = ({ onLoginSuccess }) => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
+
+            {/* Email / Student ID */}
             <div className="fade-up-1">
               <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">
-                Email
+                {studentLogin ? "Student ID" : "Email"}
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                {studentLogin ? (
+                  <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                ) : (
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none" />
+                )}
                 <input
-                  type="email"
-                  autoComplete="email"
+                  type={studentLogin ? "text" : "email"}
+                  autoComplete={studentLogin ? "username" : "email"}
                   placeholder={
-                    isEnterprise ? "admin@company.com" : "you@example.com"
+                    studentLogin
+                      ? "Enter your roll number"
+                      : isEnterprise
+                        ? "admin@company.com"
+                        : "you@example.com"
                   }
                   value={email}
                   onChange={(e) => {
@@ -307,10 +395,11 @@ const Login = ({ onLoginSuccess }) => {
                 )}
               </button>
             </div>
+
           </form>
         </div>
 
-        {/* Footer links — different for each portal type */}
+        {/* Footer links */}
         <div className="text-center mt-5 fade-up-4">
           {portal === "individual" ? (
             <>
@@ -329,20 +418,18 @@ const Login = ({ onLoginSuccess }) => {
               </a>
             </>
           ) : (
-            <>
-              {/* Enterprise: NO forgot-password link — hidden per RBAC requirements */}
-              <div className="mt-1 px-4 py-2.5 rounded-lg border border-gray-900 bg-gray-950/50">
-                <p className="text-xs text-gray-600 leading-relaxed">
-                  <span className="text-blue-400 font-semibold">
-                    Enterprise user?
-                  </span>{" "}
-                  Please contact your organization administrator for credentials
-                  or password resets.
-                </p>
-              </div>
-            </>
+            <div className="mt-1 px-4 py-2.5 rounded-lg border border-gray-900 bg-gray-950/50">
+              <p className="text-xs text-gray-600 leading-relaxed">
+                <span className="text-blue-400 font-semibold">
+                  Enterprise user?
+                </span>{" "}
+                Please contact your organization administrator for credentials
+                or password resets.
+              </p>
+            </div>
           )}
         </div>
+
       </div>
     </div>
   );

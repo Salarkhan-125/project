@@ -3,21 +3,21 @@ version: '3.8'
 services:
   mongodb:
     image: mongo:7.0
-    container_name: hackforge-mongodb
+    container_name: ctfWithAi-mongodb
     restart: always
     ports:
       - "27017:27017"
     environment:
-      MONGO_INITDB_DATABASE: hackforge
+      MONGO_INITDB_DATABASE: ctfWithAi
     volumes:
       - mongodb_data:/data/db
       - mongodb_config:/data/configdb
     networks:
-      - hackforge-network
+      - ctfWithAi-network
 
   mongo-express:
     image: mongo-express:latest
-    container_name: hackforge-mongo-express
+    container_name: ctfWithAi-mongo-express
     restart: always
     ports:
       - "8082:8081"
@@ -27,7 +27,7 @@ services:
     depends_on:
       - mongodb
     networks:
-      - hackforge-network
+      - ctfWithAi-network
 
 volumes:
   mongodb_data:
@@ -36,5 +36,5 @@ volumes:
     driver: local
 
 networks:
-  hackforge-network:
+  ctfWithAi-network:
     driver: bridge

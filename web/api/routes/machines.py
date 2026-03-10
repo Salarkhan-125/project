@@ -46,6 +46,62 @@ def _get_docker_client():
         return None
 
 
+def _get_all_containers(client) -> list:
+    """
+    Fetch the full container list ONCE from Docker.
+    Returns a list of dicts. Falls back to subprocess if SDK fails.
+    Call this once per request, then pass the result to _find_container_from_list().
+    """
+    # Try SDK first
+    if client:
+        try:
+            containers = []
+            for c in client.containers.list(all=True):
+                containers.append({
+                    "container_id":   c.id,
+                    "container_name": c.name,
+                    "status":         c.status,
+                    "ports":          c.ports,
+                })
+            return containers
+        except Exception as e:
+            logger.warning(f"SDK container list failed: {e}")
+
+    # Fallback: subprocess — called ONCE, not per machine
+    try:
+        import subprocess, json
+        result = subprocess.run(
+            ["docker", "ps", "-a", "--format", "{{json .}}"],
+            capture_output=True, text=True
+        )
+        containers = []
+        for line in result.stdout.strip().splitlines():
+            c = json.loads(line)
+            status = c.get("State", c.get("Status", "unknown")).lower()
+            if " " in status:
+                status = status.split()[0]
+            containers.append({
+                "container_id":   c.get("ID", c.get("Id", "")),
+                "container_name": c.get("Names", ""),
+                "status":         status,
+                "ports":          c.get("Ports", ""),
+            })
+        return containers
+    except Exception as e:
+        logger.warning(f"Subprocess container list failed: {e}")
+        return []
+
+def _find_container_from_list(all_containers: list, machine_id: str) -> dict | None:
+    """
+    Find a specific machine's container from a pre-fetched container list.
+    Zero Docker/subprocess calls — pure Python list search.
+    """
+    for c in all_containers:
+        name = c.get("container_name", "")
+        if machine_id in name or machine_id[:12] in name:
+            return c
+    return None
+
 def _find_container(client, machine_id: str) -> dict | None:
     # Try SDK first
     if client:
@@ -130,6 +186,10 @@ def _mysql_row_to_machine(row: dict, container: dict | None) -> dict:
 async def list_machines(current_user: dict = Depends(require_roles("individual"))):
     try:
         docker_client = _get_docker_client()
+
+        # ✅ Fetch ALL containers in ONE call — not once per machine
+        all_containers = _get_all_containers(docker_client)
+
         rows = db.list_generated_machines(user_id=current_user.get("sub"))
 
         machines = []
@@ -139,7 +199,8 @@ async def list_machines(current_user: dict = Depends(require_roles("individual")
                 logger.debug(f"Skipping {row['machine_id']} — dir gone ({machine_dir})")
                 continue
 
-            container = _find_container(docker_client, row["machine_id"])
+            # ✅ Zero Docker calls here — searches the pre-fetched list
+            container = _find_container_from_list(all_containers, row["machine_id"])
             machines.append(_mysql_row_to_machine(row, container))
 
         logger.info(f"Returning {len(machines)} VulnForge machines")
@@ -295,3 +356,84 @@ async def get_machine_container_logs(machine_id: str, tail: int = 100):
         return {"container_id": cid, "logs": logs}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  STAFF ENDPOINTS — Enterprise-only
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/staff/list")
+async def list_staff_machines(user: dict = Depends(require_roles("enterprise_staff"))):
+    """List all generated machines for the current staff user."""
+    machines = db.get_staff_generated_machines(user.get("sub"))
+    return {"machines": machines}
+
+
+@router.delete("/{machine_id}")
+async def delete_machine(
+    machine_id: str,
+    user: dict = Depends(require_roles("enterprise_staff")),
+):
+    """
+    Soft-delete a generated machine.
+    Cascades to shut down student containers, remove assignments, and clean up folders.
+    """
+    import subprocess, shutil
+
+    machine = db.get_generated_machine(machine_id)
+    if not machine:
+        raise HTTPException(status_code=404, detail="Machine not found.")
+    if machine.get("user_id") != user.get("sub"):
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    # Fetch and clean up assigned student instances
+    assignment = db.get_assignment_by_machine(machine_id)
+    if assignment:
+        instances = db.get_assignment_instances(assignment["assignment_id"])
+        for inst in instances:
+            # Stop student container if running
+            inst_folder = inst.get("instance_folder")
+            if inst_folder and Path(inst_folder).exists():
+                try:
+                    subprocess.run(
+                        ["docker-compose", "down", "--remove-orphans"],
+                        cwd=str(inst_folder),
+                        capture_output=True, text=True, timeout=30,
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to stop student container {inst.get('instance_id')}: {e}")
+        
+        # Delete DB records
+        try:
+            db.delete_student_instances_by_assignment(assignment["assignment_id"])
+            db.delete_assignment(assignment["assignment_id"])
+        except Exception as e:
+            logger.warning(f"Failed to delete assignment DB records for {machine_id}: {e}")
+
+    # Stop main container if running
+    raw_dir = machine.get("machine_dir", "")
+    machine_dir = _resolve_machine_dir(raw_dir)
+    if machine_dir.exists():
+        try:
+            subprocess.run(
+                ["docker-compose", "down", "--remove-orphans"],
+                cwd=str(machine_dir),
+                capture_output=True, text=True, timeout=30,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to stop containers for {machine_id}: {e}")
+        # Remove the machine folder (this also removes student folders inside)
+        try:
+            shutil.rmtree(machine_dir)
+        except Exception as e:
+            logger.warning(f"Failed to remove folder for {machine_id}: {e}")
+
+    # Mark as deleted in DB (soft delete)
+    try:
+        db.delete_generated_machine(machine_id)
+    except Exception as e:
+        logger.warning(f"Failed to mark machine {machine_id} as deleted in DB: {e}")
+
+    logger.info(f"Machine {machine_id} and all assignments deleted by {user.get('user_id')}")
+    return {"message": f"Machine {machine_id} deleted successfully."}
+

@@ -1,18 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { User, Award, Target, TrendingUp, Loader, AlertCircle } from 'lucide-react';
 import api from '../services/api';
 
 const Profile = () => {
-  const [userId] = useState('user_default');
+  const [userId] = useState(() => localStorage.getItem('userId') || '');
   const [userProgress, setUserProgress] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
-    fetchUserProgress();
-  }, [fetchUserProgress]);
-
-  const fetchUserProgress = async () => {
+  const fetchUserProgress = useCallback(async () => {
     try {
       setIsLoading(true);
       const data = await api.getUserProgress(userId);
@@ -22,7 +18,11 @@ const Profile = () => {
       setError(err.message);
       setIsLoading(false);
     }
-  };
+  }, [userId]);
+
+  useEffect(() => {
+    fetchUserProgress();
+  }, [fetchUserProgress]);
 
   if (isLoading) {
     return (
@@ -140,11 +140,10 @@ const Profile = () => {
                         Level {campaign.difficulty} • {campaign.machine_count} machines
                       </p>
                     </div>
-                    <div className={`px-3 py-1 rounded-lg text-xs font-semibold ${
-                      campaign.completed 
+                    <div className={`px-3 py-1 rounded-lg text-xs font-semibold ${campaign.completed
                         ? 'bg-green-950/30 text-green-400 border border-green-500/30'
                         : 'bg-orange-950/30 text-orange-400 border border-orange-500/30'
-                    }`}>
+                      }`}>
                       {campaign.completed ? 'Completed' : 'In Progress'}
                     </div>
                   </div>
@@ -174,9 +173,8 @@ const Profile = () => {
                   className="p-3 rounded-lg bg-black/30 border border-gray-800 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full ${
-                      submission.correct ? 'bg-green-500' : 'bg-red-500'
-                    }`} />
+                    <div className={`w-2 h-2 rounded-full ${submission.correct ? 'bg-green-500' : 'bg-red-500'
+                      }`} />
                     <div>
                       <p className="text-sm text-white">{submission.machine_id}</p>
                       <p className="text-xs text-gray-500">

@@ -473,7 +473,7 @@ class GeneratedMachineTable(Base):
     job_id       = Column(String(64),  nullable=False, index=True)
     user_id      = Column(String(64),  nullable=True,  index=True)
 
-    cve_id       = Column(String(64),  nullable=False)
+    cve_id       = Column(String(64),  nullable=False, index=True)
     difficulty   = Column(String(32),  nullable=False, default='medium')
 
     port         = Column(Integer,     nullable=True)
@@ -483,6 +483,8 @@ class GeneratedMachineTable(Base):
 
     flag_location = Column(String(256), nullable=True)
     flag_hash     = Column(String(64),  nullable=True)   # [FIX-C4] HMAC-SHA256
+
+    assigned   = Column(Boolean,    nullable=False, default=False)  # True after assigned to a class
 
     status     = Column(String(32), nullable=False, default='ready', index=True)
     created_at = Column(DateTime,   default=_now, index=True)
@@ -529,6 +531,78 @@ class StuDetailTable(Base):
         Index('idx_stu_enterprise',  'enterprise_id'),
         Index('idx_stu_roll',        'roll_no'),
         Index('idx_stu_class_staff', 'class_name', 'staff_user_id'),
+        Index('idx_stu_detail_class_enterprise', 'class_name', 'enterprise_id'),
+    )
+
+
+class MachineAssignmentTable(Base):
+    """
+    Tracks which generated machine has been assigned to which student class.
+    Created when a teacher clicks Assign on a machine card.
+    """
+    __tablename__ = 'machine_assignments'
+
+    id              = Column(Integer,     primary_key=True, autoincrement=True)
+    assignment_id   = Column(String(64),  unique=True, nullable=False, index=True)
+    machine_id      = Column(String(64),  nullable=False, index=True)
+    machine_name    = Column(String(256), nullable=False)          # vulnerability/service name
+    class_name      = Column(String(256), nullable=False)
+    staff_user_id   = Column(String(64),  nullable=False, index=True)
+    organization_id = Column(String(64),  nullable=False, index=True)
+    total_students  = Column(Integer,     nullable=False, default=0)
+    assigned_at     = Column(DateTime,    default=_now)
+
+    __table_args__ = (
+        Index('idx_ma_staff',    'staff_user_id'),
+        Index('idx_ma_machine',  'machine_id'),
+        Index('idx_ma_org',      'organization_id'),
+        Index('idx_machine_assignments_class', 'class_name'),
+    )
+
+
+class StudentMachineInstanceTable(Base):
+    """
+    One row per student per assignment.
+    Stores the student's unique flag, port, login credentials, and progress.
+    """
+    __tablename__ = 'student_machine_instances'
+
+    id              = Column(Integer,     primary_key=True, autoincrement=True)
+    instance_id     = Column(String(64),  unique=True, nullable=False, index=True)
+    assignment_id   = Column(
+        String(64),
+        ForeignKey('machine_assignments.assignment_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    machine_id      = Column(String(64),  nullable=False, index=True)
+    student_roll_no = Column(String(128), nullable=False)
+    student_name    = Column(String(256), nullable=False)
+    organization_id = Column(String(64),  nullable=False)
+
+    # Login credentials
+    account_id      = Column(String(128), nullable=False, index=True)  # same as roll_no
+    hashed_password = Column(String(256), nullable=False)               # bcrypt of reversed roll_no
+
+    # Unique per-student
+    unique_flag     = Column(String(256), nullable=False)   # plaintext FLAG{...}
+    assigned_port   = Column(Integer,     nullable=True)    # host port for this student's container
+    container_id    = Column(String(128), nullable=True)    # Docker container ID when started
+    instance_folder = Column(String(512), nullable=False)   # /machines/<machine_id>/students/<roll_no>/
+
+    # Progress tracking
+    status          = Column(String(32),  nullable=False, default='assigned')  # assigned/started/solved
+    started_at      = Column(DateTime,    nullable=True)
+    solved_at       = Column(DateTime,    nullable=True)
+    attempts        = Column(Integer,     nullable=False, default=0)
+    assigned_at     = Column(DateTime,    default=_now)
+
+    __table_args__ = (
+        Index('idx_smi_assignment',  'assignment_id'),
+        Index('idx_smi_machine',     'machine_id'),
+        Index('idx_smi_student',     'student_roll_no'),
+        Index('idx_smi_account',     'account_id'),
+        Index('idx_smi_org',         'organization_id'),
     )
 
 
@@ -1517,6 +1591,21 @@ class DatabaseManager:
             ).all()
             return [_row_to_dict(r) for r in rows]
 
+    def get_all_user_progress(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        Fetch ALL progress records for a user across ALL campaigns in one query.
+        Used to avoid N+1 queries in get_user_campaigns_list.
+        """
+        try:
+            with self._get_session() as session:
+                rows = session.query(ProgressTable).filter(
+                    ProgressTable.user_id == user_id
+                ).all()
+                return [_row_to_dict(r) for r in rows]
+        except Exception as e:
+            logger.error(f"get_all_user_progress error: {e}")
+            return []
+
     # ----------------------------------------------------------
     # SUBMISSIONS
     # ----------------------------------------------------------
@@ -1971,6 +2060,19 @@ class DatabaseManager:
                 for r in rows
             ]
 
+    def class_name_exists(self, staff_user_id: str, enterprise_id: str, class_name: str) -> bool:
+        """
+        Fast existence check for a class name. Returns True if it exists, False otherwise.
+        Avoids loading all classes into Python just to check for a duplicate name.
+        """
+        with self._get_session() as session:
+            count = session.query(StuDetailTable).filter_by(
+                staff_user_id=staff_user_id,
+                enterprise_id=enterprise_id,
+                class_name=class_name
+            ).limit(1).count()
+            return count > 0
+
     def get_class_students(
         self, staff_user_id: str, enterprise_id: str, class_name: str
     ) -> List[Dict[str, Any]]:
@@ -2060,6 +2162,186 @@ class DatabaseManager:
     @property
     def submissions(self):
         return _SubmissionProxy(self)
+
+    # ----------------------------------------------------------
+    # MACHINE ASSIGNMENT OPERATIONS
+    # ----------------------------------------------------------
+
+    def create_machine_assignment(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a machine-to-class assignment record."""
+        with self._get_session() as session:
+            row = MachineAssignmentTable(
+                assignment_id   = data['assignment_id'],
+                machine_id      = data['machine_id'],
+                machine_name    = data['machine_name'],
+                class_name      = data['class_name'],
+                staff_user_id   = data['staff_user_id'],
+                organization_id = data['organization_id'],
+                total_students  = data.get('total_students', 0),
+                assigned_at     = _now(),
+            )
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return _row_to_dict(row)
+
+    def get_assignments_for_staff(
+        self, staff_user_id: str, organization_id: str
+    ) -> List[Dict[str, Any]]:
+        """Return all assignments for a staff user."""
+        with self._get_session() as session:
+            rows = (
+                session.query(MachineAssignmentTable)
+                .filter_by(staff_user_id=staff_user_id, organization_id=organization_id)
+                .order_by(MachineAssignmentTable.assigned_at.desc())
+                .all()
+            )
+            return [_row_to_dict(r) for r in rows]
+
+    def get_assignment(self, assignment_id: str) -> Optional[Dict[str, Any]]:
+        """Return a single assignment."""
+        with self._get_session() as session:
+            row = session.query(MachineAssignmentTable).filter_by(
+                assignment_id=assignment_id
+            ).first()
+            return _row_to_dict(row)
+
+    def get_assignment_by_machine(self, machine_id: str) -> Optional[Dict[str, Any]]:
+        """Return assignment for a given machine_id if one exists."""
+        with self._get_session() as session:
+            row = session.query(MachineAssignmentTable).filter_by(
+                machine_id=machine_id
+            ).first()
+            return _row_to_dict(row)
+
+    # ----------------------------------------------------------
+    # STUDENT MACHINE INSTANCE OPERATIONS
+    # ----------------------------------------------------------
+
+    def create_student_instance(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a per-student machine instance record."""
+        with self._get_session() as session:
+            row = StudentMachineInstanceTable(
+                instance_id     = data['instance_id'],
+                assignment_id   = data['assignment_id'],
+                machine_id      = data['machine_id'],
+                student_roll_no = data['student_roll_no'],
+                student_name    = data['student_name'],
+                organization_id = data['organization_id'],
+                account_id      = data['account_id'],
+                hashed_password = data['hashed_password'],
+                unique_flag     = data['unique_flag'],
+                assigned_port   = data.get('assigned_port'),
+                instance_folder = data['instance_folder'],
+                status          = 'assigned',
+                assigned_at     = _now(),
+            )
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            return _row_to_dict(row)
+
+    def get_assignment_instances(
+        self, assignment_id: str
+    ) -> List[Dict[str, Any]]:
+        """Return all student instances for an assignment."""
+        with self._get_session() as session:
+            rows = (
+                session.query(StudentMachineInstanceTable)
+                .filter_by(assignment_id=assignment_id)
+                .order_by(StudentMachineInstanceTable.student_roll_no)
+                .all()
+            )
+            return [_row_to_dict(r) for r in rows]
+
+    def get_student_by_account_id(self, account_id: str) -> Optional[Dict[str, Any]]:
+        """Look up a student instance by account_id (for student login)."""
+        with self._get_session() as session:
+            row = (
+                session.query(StudentMachineInstanceTable)
+                .filter_by(account_id=account_id)
+                .first()
+            )
+            return _row_to_dict(row)
+
+    def get_student_instance(self, instance_id: str) -> Optional[Dict[str, Any]]:
+        """Return a single student instance."""
+        with self._get_session() as session:
+            row = session.query(StudentMachineInstanceTable).filter_by(
+                instance_id=instance_id
+            ).first()
+            return _row_to_dict(row)
+
+    def delete_student_instances_by_assignment(self, assignment_id: str) -> None:
+        """Delete all student instances for a given assignment."""
+        with self._get_session() as session:
+            session.query(StudentMachineInstanceTable).filter_by(
+                assignment_id=assignment_id
+            ).delete()
+            session.commit()
+
+    def delete_assignment(self, assignment_id: str) -> None:
+        """Delete an assignment."""
+        with self._get_session() as session:
+            session.query(MachineAssignmentTable).filter_by(
+                assignment_id=assignment_id
+            ).delete()
+            session.commit()
+
+    def update_student_instance(
+        self, instance_id: str, update_data: Dict[str, Any]
+    ) -> bool:
+        """Update a student instance (status, container_id, attempts, etc.)."""
+        allowed = {
+            'status', 'container_id', 'started_at', 'solved_at',
+            'attempts', 'assigned_port',
+        }
+        with self._get_session() as session:
+            row = session.query(StudentMachineInstanceTable).filter_by(
+                instance_id=instance_id
+            ).first()
+            if not row:
+                return False
+            for key, val in update_data.items():
+                if key in allowed:
+                    setattr(row, key, val)
+            session.commit()
+            return True
+
+    def mark_machine_assigned(self, machine_id: str) -> bool:
+        """Set assigned=True on a generated machine."""
+        with self._get_session() as session:
+            row = session.query(GeneratedMachineTable).filter_by(
+                machine_id=machine_id
+            ).first()
+            if not row:
+                return False
+            row.assigned = True
+            session.commit()
+            return True
+
+    def get_staff_generated_machines(self, user_id: str) -> List[Dict[str, Any]]:
+        """List generated machines for a staff user with assignment status."""
+        with self._get_session() as session:
+            rows = (
+                session.query(GeneratedMachineTable)
+                .filter_by(user_id=user_id)
+                .filter(GeneratedMachineTable.deleted_at.is_(None))
+                .order_by(GeneratedMachineTable.created_at.desc())
+                .all()
+            )
+            results = []
+            for r in rows:
+                d = _row_to_dict(r)
+                d.pop('flag_hash', None)
+                # Attach assignment_id if assigned
+                if r.assigned:
+                    assignment = session.query(MachineAssignmentTable).filter_by(
+                        machine_id=r.machine_id
+                    ).first()
+                    d['assignment_id'] = assignment.assignment_id if assignment else None
+                results.append(d)
+            return results
 
     @property
     def users(self):

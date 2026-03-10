@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  @keyframes glow {
+
+    0%,
+    100% {
+      box-shadow: 0 0 20px var(--tw-shadow-color, rgba(255, 115, 0, 0.3));
+    }
+
+    50% {
+      box-shadow: 0 0 40px var(--tw-shadow-color, rgba(255, 115, 0, 0.6));
+    }
+  }
+}
+
 * {
   margin: 0;
   padding: 0;
@@ -39,4 +53,73 @@ code {
 
 ::-webkit-scrollbar-thumb:hover {
   background: #ff7300;
+}
+
+/* ── Shared Animations ─────────────────────────── */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes msgIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeUp 0.4s ease both;
+}
+
+.fade-in-d {
+  animation: fadeUp 0.4s ease 0.1s both;
+}
+
+.fade-up {
+  animation: fadeUp 0.45s ease both;
+}
+
+.fade-up-1 {
+  animation: fadeUp 0.45s ease 0.05s both;
+}
+
+.fade-up-2 {
+  animation: fadeUp 0.45s ease 0.10s both;
+}
+
+.fade-up-3 {
+  animation: fadeUp 0.45s ease 0.15s both;
+}
+
+.fade-up-4 {
+  animation: fadeUp 0.45s ease 0.20s both;
+}
+
+.anim-row {
+  animation: fadeUp 0.4s ease both;
 }

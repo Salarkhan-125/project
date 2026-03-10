@@ -1,0 +1,13 @@
+networks:
+  vf_c6fc8ee7:
+    driver: bridge
+services:
+  spring:
+    image: vulhub/spring-webmvc:5.3.17
+    networks:
+    - vf_c6fc8ee7
+    ports:
+    - 15001:8080
+    restart: always
+    volumes:
+    - ./flag.txt:/flag.txt:ro

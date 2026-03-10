@@ -1,0 +1,11 @@
+{
+  "machine_id": "machine_1a5e3f86",
+  "job_id": "1a5e3f86-3439-406e-8f42-9378ebd6faba",
+  "cve_id": "CVE-2024-28752",
+  "difficulty": "medium",
+  "port": 8313,
+  "flag_location": "/app/flag.txt",
+  "flag_content": "FLAG{VULNFORGE_USER_55A3ADB_OWNED}",
+  "service_name": "cxf",
+  "access_url": "http://localhost:8313"
+}

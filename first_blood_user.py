@@ -76,7 +76,7 @@ for machine in machines:
             user_id        = user.user_id,
             machine_id     = machine_id,
             campaign_id    = "seed_campaign",
-            submitted_flag = f"HACKFORGE{{seed_{cve_id}}}",
+            submitted_flag = f"CTFWITHAI{{seed_{cve_id}}}",
             correct        = True,
             points_awarded = pts,
             submitted_at   = solved_at,

@@ -39,19 +39,19 @@ import bcrypt
 db = get_db()
 
 FAKE_USERS = [
-    ("ghost_root",   "ghost@hackforge.io",   1200, 8),
-    ("xpl01t3r",     "xploit@hackforge.io",  980,  6),
-    ("nullbyte",     "null@hackforge.io",     850,  5),
-    ("r3v3rse_me",   "reverse@hackforge.io",  720,  4),
-    ("p4yload",      "payload@hackforge.io",  600,  4),
-    ("sh3llsh0ck",   "shell@hackforge.io",    450,  3),
-    ("binw4lker",    "binwalk@hackforge.io",  350,  2),
-    ("0verfl0w",     "overflow@hackforge.io", 250,  2),
-    ("n00b_h4x",     "noob@hackforge.io",     150,  1),
-    ("l34rn3r",      "learner@hackforge.io",  100,  1),
+    ("ghost_root",   "ghost@ctfWithAi.io",   1200, 8),
+    ("xpl01t3r",     "xploit@ctfWithAi.io",  980,  6),
+    ("nullbyte",     "null@ctfWithAi.io",     850,  5),
+    ("r3v3rse_me",   "reverse@ctfWithAi.io",  720,  4),
+    ("p4yload",      "payload@ctfWithAi.io",  600,  4),
+    ("sh3llsh0ck",   "shell@ctfWithAi.io",    450,  3),
+    ("binw4lker",    "binwalk@ctfWithAi.io",  350,  2),
+    ("0verfl0w",     "overflow@ctfWithAi.io", 250,  2),
+    ("n00b_h4x",     "noob@ctfWithAi.io",     150,  1),
+    ("l34rn3r",      "learner@ctfWithAi.io",  100,  1),
 ]
 
-hashed_pw = bcrypt.hashpw(b"Hackforge@123", bcrypt.gensalt()).decode()
+hashed_pw = bcrypt.hashpw(b"ctfWithAi@123", bcrypt.gensalt()).decode()
 
 created = 0
 skipped = 0
@@ -84,7 +84,7 @@ for username, email, points, machines in FAKE_USERS:
             user_id        = user_id,
             machine_id     = "seed_machine",
             campaign_id    = "seed_campaign",
-            submitted_flag = "HACKFORGE{seed}",
+            submitted_flag = "CTFWITHAI{seed}",
             correct        = True,
             points_awarded = points,
             submitted_at   = _now(),

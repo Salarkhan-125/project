@@ -100,8 +100,7 @@ async def create_class(
             raise HTTPException(status_code=400, detail=f"Row {i+1}: Student Name is required.")
 
     # Check for duplicate class name for this staff user
-    existing = db.get_classes_for_staff(staff_user_id, enterprise_id)
-    if any(c['class_name'] == class_name for c in existing):
+    if db.class_name_exists(staff_user_id, enterprise_id, class_name):
         raise HTTPException(status_code=400, detail=f"A class named '{class_name}' already exists.")
 
     # Convert Pydantic models to dicts
@@ -149,8 +148,7 @@ async def update_class(
 
     # If renaming, check new name isn't already taken
     if new_class_name != old_class_name:
-        all_classes = db.get_classes_for_staff(staff_user_id, enterprise_id)
-        if any(c['class_name'] == new_class_name for c in all_classes):
+        if db.class_name_exists(staff_user_id, enterprise_id, new_class_name):
             raise HTTPException(status_code=400, detail=f"A class named '{new_class_name}' already exists.")
 
     if not body.students or len(body.students) == 0:

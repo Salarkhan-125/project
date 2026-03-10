@@ -1,6 +1,6 @@
 """
 Docker Orchestrator
-Manages deployment and lifecycle of Hackforge vulnerable machines
+Manages deployment and lifecycle of ctfWithAi vulnerable machines
 """
 
 import subprocess
@@ -393,7 +393,7 @@ def main():
     if len(sys.argv) < 2:
         print("""
 ╔═══════════════════════════════════════════════════════════╗
-║             HACKFORGE DOCKER ORCHESTRATOR                 ║
+║             CTFWITHAI DOCKER ORCHESTRATOR                 ║
 ╚═══════════════════════════════════════════════════════════╝
 
 Usage: python3 orchestrator.py <command>

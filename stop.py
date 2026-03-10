@@ -4,6 +4,12 @@ import sys
 import time
 import signal
 import subprocess
+import io
+
+# Force UTF-8 stdout/stderr for Windows cmd/powershell
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 IS_WINDOWS = sys.platform == "win32"
@@ -223,7 +229,7 @@ def stop_docker():
 def main():
     print()
     print("╔═══════════════════════════════════════════════════════════╗")
-    print("║           STOPPING HACKFORGE SERVICES                     ║")
+    print("║           STOPPING CTFWITHAI SERVICES                     ║")
     print("╚═══════════════════════════════════════════════════════════╝")
     print()
     stop_api()

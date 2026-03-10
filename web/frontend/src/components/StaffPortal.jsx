@@ -118,14 +118,7 @@ const StaffPortalContent = ({
 
     return (
         <div className="max-w-5xl mx-auto px-6 py-8">
-            <style>{`
-                @keyframes fadeUp {
-                    from { opacity: 0; transform: translateY(16px); }
-                    to   { opacity: 1; transform: translateY(0); }
-                }
-                .fade-in   { animation: fadeUp 0.4s ease both; }
-                .fade-in-d { animation: fadeUp 0.4s ease 0.1s both; }
-            `}</style>
+
 
             {/* Header */}
             <div className="flex items-center justify-between mb-8 fade-in">
@@ -228,7 +221,7 @@ const StaffPortalContent = ({
 
             {/* Delete Confirmation Modal */}
             {deleteTarget && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
                     <div className="w-full max-w-sm rounded-xl border border-gray-800 bg-gray-950 p-6 shadow-2xl">
                         <div className="flex items-center gap-3 mb-4">
                             <div className="w-10 h-10 rounded-lg bg-red-500/15 border border-red-500/30 flex items-center justify-center">

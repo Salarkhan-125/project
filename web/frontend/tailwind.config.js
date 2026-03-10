@@ -6,8 +6,8 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'hackforge-orange': '#ff7300',
-        'hackforge-dark': '#0a0a0a',
+        'ctfWithAi-orange': '#ff7300',
+        'ctfWithAi-dark': '#0a0a0a',
       },
     },
   },

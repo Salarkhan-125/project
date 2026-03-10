@@ -32,7 +32,7 @@ from groq import Groq
 # CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL   = "llama-3.3-70b-versatile"
 KVE_FILE     = os.path.join(os.path.dirname(__file__), "kve.json")
 EMBED_MODEL  = "all-MiniLM-L6-v2"
@@ -48,7 +48,8 @@ embedder = SentenceTransformer(EMBED_MODEL)
 print("✅ Embedding model ready")
 
 print("Setting up ChromaDB...")
-chroma_client = chromadb.Client()
+from chromadb.config import Settings
+chroma_client = chromadb.Client(Settings(anonymized_telemetry=False))
 collection    = chroma_client.get_or_create_collection(name="cve_data")
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -94,6 +95,7 @@ def build_and_index_cves(entries: list):
         norm_id = normalize_cve_id(entry.get("cveID", ""))
         if not norm_id:
             continue
+        # All kve.json entries are deployable (cleaned)
         rich_doc = " | ".join(filter(None, [
             entry.get("vulnerabilityName", ""),
             entry.get("vendorProject", ""),
@@ -115,6 +117,8 @@ def build_and_index_cves(entries: list):
             "short_desc": entry.get("shortDescription", ""),
             "cwes":       ",".join(entry.get("cwes", [])),
             "notes":      entry.get("notes", ""),
+            "tier":       "1",
+            "entry_type": "cve",
         })
     if not documents:
         return
@@ -163,6 +167,7 @@ def build_and_index_vulhub():
             "name": f"{software} {cve_id}", "category": "", "date_added": "",
             "short_desc": f"{software.title()} {cve_id} — {' '.join(tags)}",
             "cwes": "", "notes": "", "vulhub_path": path, "tier": "1",
+            "entry_type": "cve",
         })
         cve_lookup[cve_id] = {
             "cveID": cve_id, "vendorProject": software, "product": software,
@@ -188,6 +193,76 @@ def build_and_index_vulhub():
     print(f"✅ Indexed {len(documents)} Vulhub CVEs (total: {collection.count()})")
 
 build_and_index_vulhub()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INDEX CTF CHALLENGES INTO CHROMADB
+# ─────────────────────────────────────────────────────────────────────────────
+
+def build_and_index_ctf_challenges():
+    """Index non-CVE CTF challenges from ctf_challenges table."""
+    try:
+        challenges = DB.list_ctf_challenges()
+    except Exception as e:
+        print(f"⚠️  Could not load CTF challenges: {e}")
+        return
+    if not challenges:
+        print("⚠️  No CTF challenges in DB yet — run: python ctf_miner.py")
+        return
+
+    documents, metadatas, ids = [], [], []
+    existing_ids = set(collection.get()["ids"]) if collection.count() > 0 else set()
+
+    for ch in challenges:
+        ch_id = ch["challenge_id"]
+        if ch_id in existing_ids:
+            continue
+        vuln_types = ch.get("vuln_types", [])
+        tags = ch.get("tags", [])
+        doc = " | ".join(filter(None, [
+            ch["name"],
+            ch.get("description", ""),
+            ch["source"],
+            " ".join(vuln_types),
+            " ".join(tags),
+            ch.get("category", "web"),
+            f"CTF challenge {ch.get('difficulty', 'medium')} difficulty",
+        ]))
+        documents.append(doc)
+        ids.append(ch_id)
+        metadatas.append({
+            "cve_id":     ch_id,      # using cve_id field for unified search
+            "vendor":     ch["source"],
+            "product":    ch["name"],
+            "name":       ch["name"],
+            "category":   ch.get("category", "web"),
+            "date_added": "",
+            "short_desc": ch.get("description", ch["name"]),
+            "cwes":       ",".join(vuln_types),
+            "notes":      "",
+            "tier":       "ctf",
+            "entry_type": "ctf_challenge",
+            "source":     ch["source"],
+            "difficulty": ch.get("difficulty", "medium"),
+        })
+
+    if not documents:
+        print(f"✅ CTF challenges: all {len(challenges)} already indexed")
+        return
+
+    print(f"Indexing {len(documents)} CTF challenges into ChromaDB...")
+    embeddings = embedder.encode(documents, show_progress_bar=False).tolist()
+    batch_size = 500
+    for i in range(0, len(documents), batch_size):
+        collection.add(
+            documents  = documents[i:i+batch_size],
+            embeddings = embeddings[i:i+batch_size],
+            metadatas  = metadatas[i:i+batch_size],
+            ids        = ids[i:i+batch_size],
+        )
+    print(f"✅ Indexed {len(documents)} CTF challenges (total: {collection.count()})")
+
+build_and_index_ctf_challenges()
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 print("✅ Groq client ready")
@@ -395,10 +470,10 @@ def _parse_github_for_strategy(cve_id: str, url: str) -> dict | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CVE RETRIEVAL
+# CVE + CHALLENGE RETRIEVAL (TIERED)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def retrieve_cve_context(query: str, n: int = 5) -> str:
+def retrieve_cve_context(query: str, n: int = 8) -> str:
     if collection.count() == 0:
         return "CVE database is empty."
     query_emb = embedder.encode([query]).tolist()
@@ -407,14 +482,34 @@ def retrieve_cve_context(query: str, n: int = 5) -> str:
                                   include=["documents", "metadatas", "distances"])
     if not results or not results["ids"] or not results["ids"][0]:
         return "No relevant CVEs found."
-    lines = []
+
+    # Sort: CVE labs first, then CTF challenges, then by relevance
+    tier_order = {"1": 0, "ctf": 1}
+    scored = []
     for meta, doc, dist in zip(results["metadatas"][0], results["documents"][0], results["distances"][0]):
         relevance = round(1 - dist, 3)
-        lines.append(
-            f"• [{relevance:.2f}] {meta.get('cve_id')} | {meta.get('name','')} | "
-            f"Vendor: {meta.get('vendor','')} | Product: {meta.get('product','')} | "
-            f"Category: {meta.get('category','')} | CWEs: {meta.get('cwes','')} | "
-            f"{meta.get('short_desc','')}")
+        tier = meta.get("tier", "1")
+        entry_type = meta.get("entry_type", "cve")
+        scored.append((tier_order.get(tier, 2), -relevance, meta, relevance, entry_type))
+    scored.sort()
+
+    lines = []
+    for _, _, meta, relevance, entry_type in scored:
+        if entry_type == "ctf_challenge":
+            label = "CTF Challenge"
+            lines.append(
+                f"[{label}] [{relevance:.2f}] {meta.get('name','')} | "
+                f"Source: {meta.get('vendor','')} | "
+                f"Type: {meta.get('cwes','')} | "
+                f"Difficulty: {meta.get('difficulty', 'medium')} | "
+                f"{meta.get('short_desc','')}")
+        else:
+            label = "CVE Lab"
+            lines.append(
+                f"[{label}] [{relevance:.2f}] {meta.get('cve_id')} | {meta.get('name','')} | "
+                f"Vendor: {meta.get('vendor','')} | Product: {meta.get('product','')} | "
+                f"Category: {meta.get('category','')} | CWEs: {meta.get('cwes','')} | "
+                f"{meta.get('short_desc','')}")
     return "\n".join(lines)
 
 
@@ -642,13 +737,19 @@ def _confirm_cve_from_vulhub(cve_id: str, reqs: dict):
 def chat_with_model(message: str, history: list, requirements: dict, session_id: str = "default"):
     if requirements.get("_triggered"):
         job_id = requirements.get("_job_id", "")
-        short  = job_id[:8] if job_id else "unknown"
-        return (
-            f"Your lab is queued for generation (Job ID: {short}). "
-            "Check /api/lab/status/" + job_id + " for progress.",
-            requirements,
-            None,
-        )
+        trigger_time = requirements.get("_triggered_time", 0)
+        import time
+        elapsed = time.time() - trigger_time
+
+        if elapsed < 120:
+            return (
+                "Your lab environment is currently being provisioned. Please allow up to 2 minutes for the process to complete before starting a new lab.",
+                requirements,
+                job_id,
+            )
+        else:
+            # 120 seconds have passed; clear the current lab request context.
+            requirements.clear()
 
     # ── STEP 1: Confirm CVE BEFORE building system prompt ────────────────────
     # This ensures the AI sees cve_confirmed=yes and gives the right response
@@ -719,7 +820,11 @@ def chat_with_model(message: str, history: list, requirements: dict, session_id:
 
     system_prompt = f"""You are VulnForge, a cybersecurity lab assistant. You help security researchers and students spin up real vulnerable environments for CVE research and CTF practice.
 
-== CVEs YOU CAN BUILD ==
+== LABS YOU CAN BUILD ==
+Results marked 🟢 Ready have pre-built lab environments (instant spin-up).
+Results marked 🔵 CTF are community CTF challenges (proven challenges, instant spin-up).
+Results marked ⚪ Catalog are in our knowledge base but may not yet have a ready lab.
+
 {cve_context}
 {cve_status_note}
 
@@ -729,15 +834,17 @@ def chat_with_model(message: str, history: list, requirements: dict, session_id:
 
 == YOUR JOB ==
 Get two things from the user, nothing more:
-1. Which CVE they want
+1. Which CVE or CTF challenge they want
 2. Difficulty: easy | medium | hard
 
-Everything else is inferred from the CVE. Never ask about tech stack.
+Everything else is inferred automatically. Never ask about tech stack.
 
 == BEHAVIOR ==
 - If user gives a CVE ID → confirm it, say what it is in one line, ask difficulty
-- If user describes a vuln → suggest matching CVEs from the list above
-- If CVE confirmed and difficulty set → say "spinning up your lab now" and set ready=true
+- If user describes a vuln type (e.g. "SQL injection") → suggest 🟢 Ready and 🔵 CTF options FIRST, then mention ⚪ Catalog ones. ALWAYS prefer recommending labs that are ready to deploy.
+- If user picks a CTF challenge → confirm it, ask difficulty
+- If CVE/challenge confirmed and difficulty set → say "spinning up your lab now" and set ready=true
+- If a CVE is NOT in our database → tell the user honestly, then suggest similar CVEs or CTF challenges that ARE available. Never pretend we can build something we don't have.
 - Never ask more than ONE thing per message
 - Never mention Docker, ports, flag.txt, Dockerfiles, or implementation details
 - Keep responses short — 1-3 sentences max
@@ -745,7 +852,7 @@ Everything else is inferred from the CVE. Never ask about tech stack.
 == ALWAYS APPEND THIS AFTER YOUR RESPONSE ==
 <REQS>
 {{
-  "cve_id": "CVE-XXXX-XXXXX or null",
+  "cve_id": "CVE-XXXX-XXXXX or challenge_id or null",
   "cve_confirmed": "yes | not_found | null",
   "difficulty": "easy | medium | hard | null",
   "ready": true or false
@@ -790,6 +897,8 @@ Set ready=true ONLY when cve_confirmed=yes AND difficulty is set."""
 
             if extracted.get("ready") is True and not get_missing_fields(requirements):
                 requirements["_triggered"] = True
+                import time
+                requirements["_triggered_time"] = time.time()
                 gen    = build_generation_prompt(requirements)
                 job_id_out = store_requirements(session_id, requirements, gen)
                 requirements["_job_id"] = job_id_out

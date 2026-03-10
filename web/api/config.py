@@ -1,6 +1,6 @@
 # forge/web/api/config.py
 """
-Configuration for Hackforge API
+Configuration for ctfWithAi API
 """
 import os
 from pathlib import Path

@@ -1,0 +1,12 @@
+services:
+  spring:
+    image: vulhub/spring-webmvc:5.3.17
+    ports:
+    - 8939:8080
+    volumes:
+    - ./flag.txt:/flag.txt:ro
+    networks:
+    - vf_c6fc8ee7
+networks:
+  vf_c6fc8ee7:
+    driver: bridge

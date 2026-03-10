@@ -9,7 +9,7 @@ import vfdb as DB
 load_dotenv(dotenv_path=Path(__file__).resolve().parents[1] / ".env")
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
-GROQ_API_KEY    = os.environ.get("GROQ_API_KEY", "")
+GROQ_API_KEY    = os.environ.get("GROQ_API_KEY_1")
 GENERATOR_MODEL = "meta-llama/llama-4-maverick-17b-128e-instruct"
 OUTPUT_BASE     = Path("generated_machines")
 POLL_INTERVAL   = 6
@@ -160,7 +160,7 @@ def call_ai_json(prompt: str, label: str, max_tokens: int = 1024) -> dict:
             completion = groq_client.chat.completions.create(
                 model=GENERATOR_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=1,
+                temperature=0.3,
                 max_completion_tokens=max_tokens,
                 top_p=1,
                 stream=True,
@@ -280,6 +280,33 @@ Return ONLY this JSON:
 
     print(f"  [FLAG] svc={result['service_name']} loc={result['flag_location']} perm={result['flag_permission']}")
     return result
+
+
+def validate_flag_placement(flag_analysis: dict, gt: dict) -> dict:
+    """Sanity-check AI's flag placement against compose ground truth."""
+    svc = flag_analysis.get("service_name", "")
+    loc = flag_analysis.get("flag_location", "/flag.txt")
+
+    # Validate service exists in compose
+    if svc and svc not in gt["all_service_names"]:
+        old_svc = svc
+        svc = gt["main_service"]
+        flag_analysis["service_name"] = svc
+        print(f"  [VALIDATE] Service '{old_svc}' not in compose — using '{svc}'")
+
+    # Validate flag path doesn't conflict with volume mounts
+    if svc and svc in gt.get("services", {}):
+        svc_cfg = gt["services"][svc]
+        # If there's a build context, prefer /app or /opt paths for medium
+        if svc_cfg.get("has_build") and loc == "/flag.txt":
+            flag_analysis["flag_location"] = "/app/flag.txt"
+            print(f"  [VALIDATE] Adjusted flag path to /app/flag.txt (service has build context)")
+
+    # Ensure path starts with /
+    if not flag_analysis["flag_location"].startswith("/"):
+        flag_analysis["flag_location"] = "/" + flag_analysis["flag_location"]
+
+    return flag_analysis
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -523,43 +550,62 @@ def process_job(job: dict) -> bool:
 
         # ── Fetch compose ──────────────────────────────────────────────────
         compose_yml = ""
-        recipe = DB.get_vulhub_recipe(cve_id)
-        if recipe and recipe.get("compose_yml"):
-            compose_yml = recipe["compose_yml"]
-            print(f"  [Compose] loaded from DB")
+        vulhub_path = ""
+
+        # Check if this is a CTF challenge (non-CVE)
+        challenge_id = spec.get("challenge_id")
+        if challenge_id:
+            ctf_ch = DB.get_ctf_challenge(challenge_id) if hasattr(DB, 'get_ctf_challenge') else None
+            if ctf_ch and ctf_ch.get("compose_yml"):
+                compose_yml = ctf_ch["compose_yml"]
+                vulhub_path = ""  # CTF challenges don't have vulhub paths
+                print(f"  [Compose] loaded CTF challenge: {challenge_id}")
+            else:
+                raise RuntimeError(f"CTF challenge {challenge_id} not found or has no compose")
         else:
-            vulhub_path = spec.get("vulhub_path") or (recipe.get("path") if recipe else None)
-            if not vulhub_path:
-                raise RuntimeError(f"No vulhub_path for {cve_id} — run vulhub_miner.py first")
-            url = f"https://raw.githubusercontent.com/vulhub/vulhub/master/{vulhub_path}/docker-compose.yml"
-            print(f"  [Compose] fetching: {url}")
-            import requests
-            r = requests.get(url, timeout=15, headers={"User-Agent": "VulnForge/1.0"})
-            if r.status_code != 200:
-                raise RuntimeError(f"GitHub fetch failed ({r.status_code})")
-            compose_yml = r.text
-            DB.store_vulhub_recipe(cve_id=cve_id, path=vulhub_path,
-                                   compose_yml=compose_yml, dockerfile="", port=80, tags=[])
-            print(f"  [Compose] fetched and cached")
+            recipe = DB.get_vulhub_recipe(cve_id)
+            if recipe and recipe.get("compose_yml"):
+                compose_yml = recipe["compose_yml"]
+                print(f"  [Compose] loaded from DB")
+            else:
+                vulhub_path = spec.get("vulhub_path") or (recipe.get("path") if recipe else None)
+                if not vulhub_path:
+                    raise RuntimeError(f"No vulhub_path for {cve_id} — run vulhub_miner.py first")
+                url = f"https://raw.githubusercontent.com/vulhub/vulhub/master/{vulhub_path}/docker-compose.yml"
+                print(f"  [Compose] fetching: {url}")
+                import requests
+                r = requests.get(url, timeout=15, headers={"User-Agent": "VulnForge/1.0"})
+                if r.status_code != 200:
+                    raise RuntimeError(f"GitHub fetch failed ({r.status_code})")
+                compose_yml = r.text
+                DB.store_vulhub_recipe(cve_id=cve_id, path=vulhub_path,
+                                       compose_yml=compose_yml, dockerfile="", port=80, tags=[])
+                print(f"  [Compose] fetched and cached")
 
         gt = parse_compose_ground_truth(compose_yml)
         gt["raw_yml"] = compose_yml
 
-        vulhub_path = (
-            spec.get("vulhub_path")
-            or (recipe.get("path") if recipe else None)
-            or ""
-        )
-        if not vulhub_path:
-            raise RuntimeError(f"vulhub_path empty for {cve_id}")
+        # For Vulhub CVEs, resolve vulhub_path; for CTF challenges, skip Vulhub-specific steps
+        is_ctf = bool(challenge_id)
+        if not is_ctf:
+            vulhub_path = (
+                spec.get("vulhub_path")
+                or (recipe.get("path") if recipe else None)
+                or ""
+            )
+            if not vulhub_path:
+                raise RuntimeError(f"vulhub_path empty for {cve_id}")
+        else:
+            vulhub_path = ""
 
-        print(f"  CVE={cve_id} | difficulty={difficulty} | port={host_port} | path={vulhub_path}")
+        print(f"  {'CTF' if is_ctf else 'CVE'}={challenge_id or cve_id} | difficulty={difficulty} | port={host_port}")
 
-        readme = fetch_vulhub_readme(vulhub_path)
+        readme = fetch_vulhub_readme(vulhub_path) if vulhub_path else ""
 
         # ── Step 1: AI decides flag placement ─────────────────────────────
         print("  [1/3] Flag placement...", end=" ", flush=True)
-        flag_analysis = analyze_compose_for_flag(compose_yml, cve_id, difficulty, gt, readme)
+        flag_analysis = analyze_compose_for_flag(compose_yml, challenge_id or cve_id, difficulty, gt, readme)
+        flag_analysis = validate_flag_placement(flag_analysis, gt)
         svc_name  = flag_analysis["service_name"]
         flag_loc  = flag_analysis["flag_location"]
         flag_perm = flag_analysis["flag_permission"]
@@ -573,28 +619,36 @@ def process_job(job: dict) -> bool:
         machine_dir = OUTPUT_BASE / machine_id
         machine_dir.mkdir(parents=True, exist_ok=True)
 
-        dockerfile     = build_dockerfile(vulhub_path)
-        has_dockerfile = bool(dockerfile)
-
-        if has_dockerfile:
-            (machine_dir / "Dockerfile").write_text(dockerfile)
+        if is_ctf:
+            # CTF challenges: use Dockerfile from DB if available
+            ctf_dockerfile = ctf_ch.get("dockerfile", "") if ctf_ch else ""
+            has_dockerfile = bool(ctf_dockerfile)
+            if has_dockerfile:
+                (machine_dir / "Dockerfile").write_text(ctf_dockerfile)
+            extra_files = []
         else:
-            needs_build = any(
-                (cfg or {}).get("build")
-                for cfg in gt["parsed"].get("services", {}).values()
-            )
-            if needs_build:
-                raise RuntimeError(
-                    f"Dockerfile fetch failed for vulhub/{vulhub_path} but compose has build: "
-                    f"— check vulhub_path and GitHub connectivity."
+            dockerfile     = build_dockerfile(vulhub_path)
+            has_dockerfile = bool(dockerfile)
+
+            if has_dockerfile:
+                (machine_dir / "Dockerfile").write_text(dockerfile)
+            else:
+                needs_build = any(
+                    (cfg or {}).get("build")
+                    for cfg in gt["parsed"].get("services", {}).values()
                 )
+                if needs_build:
+                    raise RuntimeError(
+                        f"Dockerfile fetch failed for vulhub/{vulhub_path} but compose has build: "
+                        f"— check vulhub_path and GitHub connectivity."
+                    )
+            extra_files = fetch_compose_extra_files(vulhub_path, gt["parsed"], machine_dir)
 
         # Write flag.txt — volume-mounted read-only into container
         (machine_dir / "flag.txt").write_text(flag_content)
         if flag_perm == "400":
             (machine_dir / "flag.txt").chmod(0o400)
 
-        extra_files = fetch_compose_extra_files(vulhub_path, gt["parsed"], machine_dir)
         if extra_files:
             print(f"\n  [EXTRA] {extra_files}", end=" ")
         print("✓")

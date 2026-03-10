@@ -3,22 +3,32 @@
 Docker container management endpoints.
 Uses the Docker SDK directly — the legacy Orchestrator class no longer exists.
 """
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 import docker
 from web.api.dependencies import db
 from web.api.config import logger
+from web.api.routes.auth import get_current_user, require_roles
 
 router = APIRouter(prefix="/api/docker", tags=["docker"])
 
 
+# ── Module-level Docker singleton — created once, reused on every request ──
+_docker_singleton = None
+
 def _docker_client():
-    """Return a Docker client, raising a clean 503 if Docker is unavailable."""
-    try:
-        client = docker.from_env()
-        client.ping()
-        return client
-    except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Docker is not available: {e}")
+    """
+    Returns a cached Docker client. Creates it on first call only.
+    Raises HTTP 503 if Docker is unavailable.
+    """
+    global _docker_singleton
+    if _docker_singleton is None:
+        try:
+            _docker_singleton = docker.from_env()
+            _docker_singleton.ping()  # verify once at startup only
+        except Exception as e:
+            _docker_singleton = None
+            raise HTTPException(status_code=503, detail=f"Docker is not available: {e}")
+    return _docker_singleton
 
 
 # ============================================================================
@@ -26,8 +36,8 @@ def _docker_client():
 # ============================================================================
 
 @router.post("/start")
-async def start_containers(background_tasks: BackgroundTasks):
-    """Start all stopped HackForge Docker containers in the background."""
+async def start_containers(background_tasks: BackgroundTasks, current_user: dict = Depends(require_roles("enterprise_staff", "enterprise_admin"))):
+    """Start all stopped ctfWithAi Docker containers in the background."""
     def _start_all():
         try:
             client = docker.from_env()
@@ -43,7 +53,7 @@ async def start_containers(background_tasks: BackgroundTasks):
 
 
 @router.post("/stop")
-async def stop_containers():
+async def stop_containers(current_user: dict = Depends(require_roles("enterprise_staff", "enterprise_admin"))):
     """Stop all running Docker containers."""
     client = _docker_client()
     try:
@@ -57,7 +67,7 @@ async def stop_containers():
 
 
 @router.post("/restart")
-async def restart_containers():
+async def restart_containers(current_user: dict = Depends(require_roles("enterprise_staff", "enterprise_admin"))):
     """Restart all running Docker containers."""
     client = _docker_client()
     try:
@@ -71,7 +81,7 @@ async def restart_containers():
 
 
 @router.get("/status")
-async def docker_status():
+async def docker_status(current_user: dict = Depends(require_roles("enterprise_staff", "enterprise_admin"))):
     """Get status of all Docker containers."""
     client = _docker_client()
     try:
@@ -98,7 +108,7 @@ async def docker_status():
 
 
 @router.delete("/destroy")
-async def destroy_containers():
+async def destroy_containers(current_user: dict = Depends(require_roles("enterprise_staff", "enterprise_admin"))):
     """Force-remove all Docker containers (running or stopped)."""
     client = _docker_client()
     try:
@@ -118,7 +128,7 @@ async def destroy_containers():
 # ============================================================================
 
 @router.post("/container/{container_id}/start")
-async def start_container(container_id: str):
+async def start_container(container_id: str, current_user: dict = Depends(get_current_user)):
     """Start a specific container"""
     try:
         client = docker.from_env()
@@ -136,7 +146,7 @@ async def start_container(container_id: str):
 
 
 @router.post("/container/{container_id}/stop")
-async def stop_container(container_id: str):
+async def stop_container(container_id: str, current_user: dict = Depends(get_current_user)):
     """Stop a specific container"""
     try:
         client = docker.from_env()
@@ -154,7 +164,7 @@ async def stop_container(container_id: str):
 
 
 @router.post("/container/{container_id}/restart")
-async def restart_container(container_id: str):
+async def restart_container(container_id: str, current_user: dict = Depends(get_current_user)):
     """Restart a specific container"""
     try:
         client = docker.from_env()
@@ -168,7 +178,7 @@ async def restart_container(container_id: str):
 
 
 @router.delete("/container/{container_id}")
-async def remove_container(container_id: str):
+async def remove_container(container_id: str, current_user: dict = Depends(get_current_user)):
     """Remove a specific container"""
     try:
         client = docker.from_env()
@@ -182,7 +192,7 @@ async def remove_container(container_id: str):
 
 
 @router.get("/container/{container_id}/logs")
-async def get_container_logs(container_id: str, tail: int = 100):
+async def get_container_logs(container_id: str, tail: int = 100, current_user: dict = Depends(get_current_user)):
     """Get logs from a specific container"""
     try:
         client = docker.from_env()
@@ -196,7 +206,7 @@ async def get_container_logs(container_id: str, tail: int = 100):
 
 
 @router.get("/campaign/{campaign_id}/containers")
-async def get_campaign_containers(campaign_id: str):
+async def get_campaign_containers(campaign_id: str, current_user: dict = Depends(get_current_user)):
     """Get all Docker containers for a specific campaign"""
     try:
         client = docker.from_env()

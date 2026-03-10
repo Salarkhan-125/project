@@ -1,4 +1,4 @@
-# HackForge — Deployment Guide
+# ctfWithAi — Deployment Guide
 
 ## What goes where
 
@@ -23,13 +23,13 @@ Ubuntu  →  everything else       (FastAPI, core engine, MySQL, Docker)
 ```bash
 # From your local machine — exclude frontend build artifacts and node_modules
 rsync -avz --exclude='node_modules' --exclude='web/frontend/build' \
-  c:/deploy/Project/ ubuntu@YOUR_IP:/home/ubuntu/hackforge/
+  c:/deploy/Project/ ubuntu@YOUR_IP:/home/ubuntu/ctfWithAi/
 ```
 
 ### 3. Set up Python environment
 
 ```bash
-cd /home/ubuntu/hackforge
+cd /home/ubuntu/ctfWithAi
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -55,8 +55,8 @@ FRONTEND_URL=https://your-app.vercel.app
 DB_HOST=localhost
 DB_USER=root
 DB_PASSWORD=your_secure_password
-DB_NAME=hackforge
-DATABASE_URL=mysql+pymysql://root:your_secure_password@localhost:3306/hackforge
+DB_NAME=ctfWithAi
+DATABASE_URL=mysql+pymysql://root:your_secure_password@localhost:3306/ctfWithAi
 
 # Security — generate strong values:
 # python3 -c "import secrets; print(secrets.token_hex(32))"
@@ -68,7 +68,7 @@ FLAG_HMAC_KEY=<generate_strong_value>   # ⚠️ NEVER change after first run
 # Email (get from resend.com)
 RESEND_API_KEY=re_your_key_here
 EMAIL_FROM_ADDRESS=noreply@yourdomain.com   # Must be verified in Resend
-EMAIL_FROM_NAME=HackForge
+EMAIL_FROM_NAME=ctfWithAi
 
 # Groq AI
 GROQ_API_KEY=gsk_your_groq_key_here
@@ -86,9 +86,9 @@ sudo mysql -u root -p
 ```
 
 ```sql
-CREATE DATABASE hackforge CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'hackforge'@'localhost' IDENTIFIED BY 'your_secure_password';
-GRANT ALL PRIVILEGES ON hackforge.* TO 'hackforge'@'localhost';
+CREATE DATABASE ctfWithAi CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'ctfWithAi'@'localhost' IDENTIFIED BY 'your_secure_password';
+GRANT ALL PRIVILEGES ON ctfWithAi.* TO 'ctfWithAi'@'localhost';
 FLUSH PRIVILEGES;
 EXIT;
 ```
@@ -116,20 +116,20 @@ uvicorn web.api.main:app --host 0.0.0.0 --port 8000
 ### 8. (Optional) Run as a systemd service
 
 ```bash
-sudo nano /etc/systemd/system/hackforge.service
+sudo nano /etc/systemd/system/ctfWithAi.service
 ```
 
 ```ini
 [Unit]
-Description=HackForge API
+Description=ctfWithAi API
 After=network.target mysql.service
 
 [Service]
 User=ubuntu
-WorkingDirectory=/home/ubuntu/hackforge
-ExecStart=/home/ubuntu/hackforge/venv/bin/uvicorn web.api.main:app --host 0.0.0.0 --port 8000
+WorkingDirectory=/home/ubuntu/ctfWithAi
+ExecStart=/home/ubuntu/ctfWithAi/venv/bin/uvicorn web.api.main:app --host 0.0.0.0 --port 8000
 Restart=always
-EnvironmentFile=/home/ubuntu/hackforge/.env
+EnvironmentFile=/home/ubuntu/ctfWithAi/.env
 
 [Install]
 WantedBy=multi-user.target
@@ -137,9 +137,9 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable hackforge
-sudo systemctl start hackforge
-sudo systemctl status hackforge
+sudo systemctl enable ctfWithAi
+sudo systemctl start ctfWithAi
+sudo systemctl status ctfWithAi
 ```
 
 ### 9. Verify the API is running
@@ -181,14 +181,14 @@ Go to **Project → Settings → Environment Variables** and add:
 
 ### 4. Deploy
 
-Click **Deploy** — Vercel will build and give you a URL like `https://hackforge-abc123.vercel.app`.
+Click **Deploy** — Vercel will build and give you a URL like `https://ctfWithAi-abc123.vercel.app`.
 
 ### 5. Update your backend's .env
 
 Set `FRONTEND_URL` to your Vercel URL so CORS and password reset emails work:
 
 ```ini
-FRONTEND_URL=https://hackforge-abc123.vercel.app
+FRONTEND_URL=https://ctfWithAi-abc123.vercel.app
 ```
 
 Then restart the backend.
@@ -200,13 +200,13 @@ Then restart the backend.
 When you're ready to use email (OTP + password reset):
 
 1. Sign up at [resend.com](https://resend.com)
-2. Add and verify your domain (e.g., `hackforge.io`)
+2. Add and verify your domain (e.g., `ctfWithAi.io`)
 3. Create an API key
 4. Update `.env` on Ubuntu:
    ```ini
    RESEND_API_KEY=re_your_real_key
-   EMAIL_FROM_ADDRESS=noreply@hackforge.io
-   EMAIL_FROM_NAME=HackForge
+   EMAIL_FROM_ADDRESS=noreply@ctfWithAi.io
+   EMAIL_FROM_NAME=ctfWithAi
    SKIP_EMAIL_VERIFICATION=false
    ```
 5. Restart the backend — email is live.
@@ -220,7 +220,7 @@ When you're ready to use email (OTP + password reset):
 - [ ] `.env` has real values (not `changeme_*`)
 - [ ] `SERVER_HOST` = `http://YOUR_PUBLIC_IP`
 - [ ] `FRONTEND_URL` = your Vercel URL
-- [ ] MySQL running and `hackforge` database created
+- [ ] MySQL running and `ctfWithAi` database created
 - [ ] Migrations run
 - [ ] API responding at `http://YOUR_IP:8000/api/docs`
 - [ ] Docker installed and accessible by the app user

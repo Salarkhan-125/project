@@ -1,6 +1,6 @@
 # forge/web/api/main.py
 """
-Hackforge Web API - Main Entry Point
+ctfWithAi Web API - Main Entry Point
 Refactored version with organized route structure
 """
 import asyncio
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI):
 # ============================================================================
 
 app = FastAPI(
-    title="Hackforge API",
+    title="ctfWithAi API",
     description="REST API for Dynamic Vulnerability Training Platform with Database",
     version="2.1.0",
     lifespan=lifespan,
@@ -127,7 +127,7 @@ if __name__ == "__main__":
 
     print("""
 ╔═══════════════════════════════════════════════════════════╗
-║          HACKFORGE WEB API WITH DATABASE                  ║
+║          CTFWITHAI WEB API WITH DATABASE                  ║
 ╚═══════════════════════════════════════════════════════════╝
 
 Starting API server with MySql integration...

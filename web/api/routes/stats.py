@@ -1,23 +1,17 @@
 # forge/web/api/routes/stats.py
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from typing import Optional
 from web.api.dependencies import db
 from web.api.config import logger
-from sqlalchemy import desc
-import importlib.util, sys as _sys, pathlib as _pl
-_db_path = _pl.Path(__file__).resolve().parent.parent.parent / "database" / "database.py"
-_spec = importlib.util.spec_from_file_location("_hf_db", _db_path)
-_hf_db = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_hf_db)
-SessionLocal    = _hf_db.SessionLocal
-SubmissionTable = _hf_db.SubmissionTable
-UserTable       = _hf_db.UserTable
+from sqlalchemy import desc, func
+from web.api.routes.auth import get_current_user
+from web.database.database import SessionLocal, SubmissionTable, UserTable
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
 
 @router.get("")
-async def get_statistics(user_id: Optional[str] = Query(None)):
+async def get_statistics(user_id: Optional[str] = Query(None), current_user: dict = Depends(get_current_user)):
     platform_stats = db.get_platform_stats()
 
     if user_id:
@@ -41,14 +35,27 @@ async def get_statistics(user_id: Optional[str] = Query(None)):
 
 
 @router.get("/feed")
-async def get_solve_feed(limit: int = 20):
+async def get_solve_feed(limit: int = 20, current_user: dict = Depends(get_current_user)):
     """
     Returns recent correct flag submissions with username,
     machine_id, points, and whether it was first blood.
+    Optimized: single query with subquery for first blood detection.
     """
     session = SessionLocal()
     try:
-        # Get recent correct submissions joined with username
+        # Build first-blood subquery — finds the earliest submission per machine
+        # This runs as a subquery inside the main query, not as a separate round-trip
+        first_blood_subq = (
+            session.query(
+                SubmissionTable.machine_id,
+                func.min(SubmissionTable.submitted_at).label("first_at"),
+            )
+            .filter(SubmissionTable.correct == True)
+            .group_by(SubmissionTable.machine_id)
+            .subquery()
+        )
+
+        # Single main query — joins username and first-blood status together
         rows = (
             session.query(
                 SubmissionTable.submission_id,
@@ -57,33 +64,22 @@ async def get_solve_feed(limit: int = 20):
                 SubmissionTable.points_awarded,
                 SubmissionTable.submitted_at,
                 UserTable.username,
+                (SubmissionTable.submitted_at == first_blood_subq.c.first_at).label("is_first_blood"),
             )
             .outerjoin(UserTable, SubmissionTable.user_id == UserTable.user_id)
+            .outerjoin(
+                first_blood_subq,
+                SubmissionTable.machine_id == first_blood_subq.c.machine_id,
+            )
             .filter(SubmissionTable.correct == True)
-            .filter(SubmissionTable.machine_id != "seed_machine")  # exclude dummy seed
+            .filter(SubmissionTable.machine_id != "seed_machine")
             .order_by(desc(SubmissionTable.submitted_at))
             .limit(limit)
             .all()
         )
 
-        # Find first blood per machine (earliest correct submission)
-        from sqlalchemy import func
-        first_bloods = (
-            session.query(
-                SubmissionTable.machine_id,
-                func.min(SubmissionTable.submitted_at).label("first_at"),
-            )
-            .filter(SubmissionTable.correct == True)
-            .group_by(SubmissionTable.machine_id)
-            .all()
-        )
-        first_blood_map = {r.machine_id: r.first_at for r in first_bloods}
-
         feed = []
         for r in rows:
-            is_first_blood = (
-                first_blood_map.get(r.machine_id) == r.submitted_at
-            )
             feed.append({
                 "submission_id": r.submission_id,
                 "user_id":       r.user_id,
@@ -91,7 +87,7 @@ async def get_solve_feed(limit: int = 20):
                 "machine_id":    r.machine_id,
                 "points":        r.points_awarded or 0,
                 "submitted_at":  r.submitted_at.isoformat() if r.submitted_at else None,
-                "first_blood":   is_first_blood,
+                "first_blood":   bool(r.is_first_blood),
             })
 
         return {"feed": feed}

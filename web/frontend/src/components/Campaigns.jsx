@@ -1,111 +1,46 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import api from "../services/api";
 import {
-  Zap,
-  Plus,
-  Target,
-  AlertCircle,
-  CheckCircle,
   Loader,
-  ChevronRight,
-  Layers,
   Clock,
   ArrowUpRight,
   X,
-  Search,
+  Trash2,
+  Send,
+  Server,
+  Shield,
+  ExternalLink,
+  CheckCircle,
 } from "lucide-react";
-
-// ─── Category icons / colors ─────────────────────────────────────────────────
-const CAT_META = {
-  injection: { color: "#3b82f6", label: "Injection", emoji: "💉" },
-  authentication: { color: "#10b981", label: "Authentication", emoji: "🔐" },
-  authorization: { color: "#f59e0b", label: "Authorization", emoji: "🛡️" },
-  cryptography: { color: "#8b5cf6", label: "Cryptography", emoji: "🔒" },
-  web: { color: "#ec4899", label: "Web", emoji: "🌐" },
-  default: { color: "#6b7280", label: "Other", emoji: "📦" },
-};
-
-const DIFF_COLORS = {
-  1: "#10b981",
-  2: "#3b82f6",
-  3: "#f59e0b",
-  4: "#f97316",
-  5: "#ef4444",
-};
-const DIFF_LABELS = {
-  1: "Beginner",
-  2: "Easy",
-  3: "Medium",
-  4: "Hard",
-  5: "Expert",
-};
-const getDiffColor = (l) => DIFF_COLORS[l] || "#ff7300";
-const getDiffLabel = (l) => DIFF_LABELS[l] || "Unknown";
-
-// ─── Tiny animated progress ring ─────────────────────────────────────────────
-const ProgressRing = ({ pct, size = 44, stroke = 4, color = "#ff7300" }) => {
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const offset = circ - (pct / 100) * circ;
-  return (
-    <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke="#1f1f1f"
-        strokeWidth={stroke}
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth={stroke}
-        strokeDasharray={circ}
-        strokeDashoffset={offset}
-        strokeLinecap="round"
-        style={{ transition: "stroke-dashoffset 0.6s ease" }}
-      />
-    </svg>
-  );
-};
 
 // ─── Campaigns Page ──────────────────────────────────────────────────────────
 const Campaigns = () => {
-  // CHANGED: read the real userId from localStorage instead of hardcoding 'user_default'
-  // This is saved there by App.js handleLoginSuccess when the user logs in
+  const navigate = useNavigate();
   const [userId] = useState(() => localStorage.getItem("userId") || "");
 
-  // Form state
-  const [isCreating, setIsCreating] = useState(false);
-  const [difficulty, setDifficulty] = useState(2);
-  const [machineCount, setMachineCount] = useState(5);
-  const [campaignName, setCampaignName] = useState("");
-  const [createdCampaign, setCreatedCampaign] = useState(null);
   const [error, setError] = useState(null);
 
-  // Campaign list
-  const [myCampaigns, setMyCampaigns] = useState([]);
-  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
-  const [campaignSearch, setCampaignSearch] = useState("");
+  // Staff machines
+  const [staffMachines, setStaffMachines] = useState([]);
+  const [loadingMachines, setLoadingMachines] = useState(false);
 
-  // View mode
-  const [showCreateForm, setShowCreateForm] = useState(false);
+  // Assign modal
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [assignMachineId, setAssignMachineId] = useState(null);
+  const [classes, setClasses] = useState([]);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [selectedClass, setSelectedClass] = useState(null);
+  const [assigning, setAssigning] = useState(false);
+  const [assignSuccess, setAssignSuccess] = useState(null);
 
-  // api
-  const [api, setApi] = useState(null);
+  // Delete confirm
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
-    import("../services/api").then((m) => setApi(m.default));
-  }, [fetchMyCampaigns]);
-
-  useEffect(() => {
-    if (api) {
-      fetchMyCampaigns();
-    }
-  }, [api]);
+    fetchStaffMachines();
+  }, []);
 
   // Guard: if userId is missing the user is not properly logged in
   useEffect(() => {
@@ -114,58 +49,70 @@ const Campaigns = () => {
     }
   }, [userId]);
 
-  const fetchMyCampaigns = async () => {
-    if (!api) return;
+  // ── Staff machine methods ──
+  const fetchStaffMachines = async () => {
     try {
-      setLoadingCampaigns(true);
-      setMyCampaigns(await api.getUserCampaigns(userId));
+      setLoadingMachines(true);
+      const res = await api.getStaffMachines();
+      setStaffMachines(res.machines || []);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch staff machines:", err);
     } finally {
-      setLoadingCampaigns(false);
+      setLoadingMachines(false);
     }
   };
 
-  const filteredCampaigns = myCampaigns.filter((c) =>
-    (c.campaign_name || "")
-      .toLowerCase()
-      .includes(campaignSearch.toLowerCase()),
-  );
-
-  const handleCreateCampaign = async () => {
-    if (!campaignName.trim()) {
-      setError("Please enter a campaign name");
-      return;
-    }
+  const handleDeleteMachine = async (machineId) => {
     try {
-      setIsCreating(true);
-      setError(null);
-      const campaign = await api.createCampaign(
-        userId,
-        campaignName,
-        difficulty,
-        machineCount,
-      );
-      setCreatedCampaign(campaign);
-      setCampaignName("");
-      fetchMyCampaigns();
+      setDeleting(true);
+      await api.deleteMachine(machineId);
+      setDeleteTarget(null);
+      fetchStaffMachines();
     } catch (err) {
       setError(err.message);
     } finally {
-      setIsCreating(false);
+      setDeleting(false);
     }
   };
 
-  const navigateToCampaign = (id) => {
-    window.location.href = `/campaigns/${id}`;
+  const openAssignModal = async (machineId) => {
+    setAssignMachineId(machineId);
+    setShowAssignModal(true);
+    setSelectedClass(null);
+    setAssignSuccess(null);
+    try {
+      setLoadingClasses(true);
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `${process.env.REACT_APP_API_URL || "http://localhost:8000"}/api/enterprise/students/classes`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        setClasses(data.classes || []);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingClasses(false);
+    }
   };
 
-  if (!api)
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <Loader className="w-10 h-10 text-orange-500 animate-spin" />
-      </div>
-    );
+  const handleAssign = async () => {
+    if (!selectedClass || !assignMachineId) return;
+    try {
+      setAssigning(true);
+      const res = await api.assignMachine(assignMachineId, selectedClass);
+      setAssignSuccess(res.message);
+      fetchStaffMachines();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setAssigning(false);
+    }
+  };
+
+
 
   return (
     <div className="min-h-screen bg-black text-white relative">
@@ -176,383 +123,93 @@ const Campaigns = () => {
         }}
       />
 
-      <style>{`
-        @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
-        .anim-row { animation: fadeUp 0.4s ease both; }
-      `}</style>
+
 
       <div className="relative z-10 max-w-7xl mx-auto px-5 py-7">
-        {/* ── Header ── */}
-        <div
-          className="flex items-start justify-between mb-6"
-          style={{ animation: "fadeUp 0.35s ease both" }}
-        >
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <div className="w-7 h-7 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center">
-                <Target className="w-4 h-4 text-orange-500" />
-              </div>
-              <h1 className="text-xl font-bold text-white">Campaign Manager</h1>
+        {/* ══════════════ Generated Machines ══════════════ */}
+        <div style={{ animation: "fadeUp 0.5s ease 0.15s both" }}>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-6 h-6 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center">
+              <Server className="w-3.5 h-3.5 text-blue-400" />
             </div>
-            <p className="text-gray-600 text-sm ml-9">
-              Create, manage, and track your cybersecurity campaigns
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setShowCreateForm(true);
-              setCreatedCampaign(null);
-              setError(null);
-            }}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-all active:scale-95"
-          >
-            <Plus className="w-4 h-4" /> New Campaign
-          </button>
-        </div>
-
-        {/* ── Summary row ── */}
-        <div
-          className="grid grid-cols-2 gap-3 mb-6"
-          style={{ animation: "fadeUp 0.4s ease 0.06s both" }}
-        >
-          {[
-            {
-              icon: Layers,
-              label: "Total Campaigns",
-              value: myCampaigns.length,
-              color: "#ff7300",
-            },
-            {
-              icon: CheckCircle,
-              label: "Completed",
-              value: myCampaigns.filter(
-                (c) => (c.progress_percentage || 0) >= 100,
-              ).length,
-              color: "#10b981",
-            },
-          ].map((s, i) => (
-            <div
-              key={i}
-              className="rounded-xl border border-gray-900 bg-gray-950/70 px-4 py-3 flex items-center gap-3"
-            >
-              <div
-                className="p-2 rounded-lg"
-                style={{ background: s.color + "15" }}
-              >
-                <s.icon className="w-4 h-4" style={{ color: s.color }} />
-              </div>
-              <div>
-                <p className="text-lg font-bold text-white tabular-nums">
-                  {s.value}
-                </p>
-                <p className="text-xs text-gray-600">{s.label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── Create Form Modal Overlay ── */}
-        {showCreateForm && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-start justify-center p-6 pt-16 overflow-y-auto">
-            <div
-              className="bg-gray-950 border border-gray-800 rounded-2xl w-full max-w-2xl shadow-2xl"
-              style={{ animation: "fadeUp 0.3s ease both" }}
-            >
-              <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-900">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-orange-500/15 border border-orange-500/30 flex items-center justify-center">
-                    <Plus className="w-4 h-4 text-orange-500" />
-                  </div>
-                  <h2 className="text-lg font-bold text-white">
-                    Create New Campaign
-                  </h2>
-                </div>
-                <button
-                  onClick={() => setShowCreateForm(false)}
-                  className="text-gray-600 hover:text-gray-300 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-5">
-                {/* Name */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Campaign Name *
-                  </label>
-                  <input
-                    type="text"
-                    value={campaignName}
-                    onChange={(e) => setCampaignName(e.target.value)}
-                    placeholder="e.g. Web Security Training"
-                    className="w-full px-4 py-2.5 bg-black border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500 transition-colors placeholder-gray-700"
-                  />
-                </div>
-
-                {/* Difficulty */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Difficulty Level
-                  </label>
-                  <div className="flex gap-2">
-                    {[1, 2, 3, 4, 5].map((l) => {
-                      const active = difficulty === l;
-                      const c = getDiffColor(l);
-                      return (
-                        <button
-                          key={l}
-                          onClick={() => setDifficulty(l)}
-                          className={`flex-1 py-2.5 rounded-lg border text-center transition-all duration-200 ${active ? "scale-105" : "hover:border-gray-700"}`}
-                          style={{
-                            borderColor: active ? c : "#374151",
-                            background: active ? c + "18" : "transparent",
-                          }}
-                        >
-                          <p
-                            className="text-sm font-bold"
-                            style={{ color: active ? c : "#9ca3af" }}
-                          >
-                            {l}
-                          </p>
-                          <p
-                            className="text-xs mt-0.5"
-                            style={{ color: active ? c : "#6b7280" }}
-                          >
-                            {getDiffLabel(l).slice(0, 3)}
-                          </p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p
-                    className="text-xs mt-1.5 text-center font-semibold"
-                    style={{ color: getDiffColor(difficulty) }}
-                  >
-                    {getDiffLabel(difficulty)}
-                  </p>
-                </div>
-
-                {/* Machine count */}
-                <div>
-                  <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Machine Count
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={machineCount}
-                      onChange={(e) =>
-                        setMachineCount(parseInt(e.target.value) || 1)
-                      }
-                      className="w-24 px-3 py-2 bg-black border border-gray-800 rounded-lg text-white text-sm focus:outline-none focus:border-orange-500"
-                    />
-                    <p className="text-xs text-gray-600">
-                      →{" "}
-                      <span className="text-orange-500 font-semibold">
-                        {machineCount}
-                      </span>{" "}
-                      total machines
-                    </p>
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg bg-red-500/8 border border-red-500/25">
-                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                    <p className="text-red-400 text-xs">{error}</p>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleCreateCampaign}
-                  disabled={isCreating}
-                  className="w-full py-2.5 rounded-lg bg-orange-500 hover:bg-orange-600 disabled:bg-gray-800 disabled:text-gray-600 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2 active:scale-95"
-                >
-                  {isCreating ? (
-                    <>
-                      <Loader className="w-4 h-4 animate-spin" /> Generating...
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="w-4 h-4" /> Generate Campaign
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {createdCampaign && (
-                <div className="border-t border-gray-900 p-6">
-                  <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-lg bg-green-500/8 border border-green-500/25 mb-4">
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                    <div>
-                      <p className="text-sm font-semibold text-green-400">
-                        Campaign Created!
-                      </p>
-                      <p className="text-xs text-gray-600">
-                        {createdCampaign.campaign_name} ·{" "}
-                        {createdCampaign.machines?.length} machines
-                      </p>
-                    </div>
-                  </div>
-                  <div
-                    className="max-h-44 overflow-y-auto rounded-lg border border-gray-800 bg-black/40 mb-4"
-                    style={{
-                      scrollbarWidth: "thin",
-                      scrollbarColor: "#333 transparent",
-                    }}
-                  >
-                    {createdCampaign.machines?.map((m, i) => (
-                      <div
-                        key={m.machine_id}
-                        className="flex items-center gap-3 px-3.5 py-2.5 border-b border-gray-900/60 last:border-0"
-                      >
-                        <div
-                          className="w-6 h-6 rounded-md flex items-center justify-center text-white text-xs font-bold"
-                          style={{ background: getDiffColor(m.difficulty) }}
-                        >
-                          {i + 1}
-                        </div>
-                        <div className="flex-1">
-                          <p className="text-xs font-semibold text-gray-200">
-                            {m.variant}
-                          </p>
-                          {m.port && (
-                            <code className="text-xs text-orange-500 font-mono">
-                              http://
-                              {process.env.REACT_APP_SERVER_HOST || "localhost"}
-                              :{m.port}
-                            </code>
-                          )}
-                        </div>
-                        <span className="text-xs text-gray-600">
-                          Lv {m.difficulty}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <button
-                    onClick={() =>
-                      navigateToCampaign(createdCampaign.campaign_id)
-                    }
-                    className="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
-                  >
-                    View Campaign <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Campaigns List ── */}
-        <div style={{ animation: "fadeUp 0.4s ease 0.12s both" }}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-gray-600 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={campaignSearch}
-                onChange={(e) => setCampaignSearch(e.target.value)}
-                placeholder="Search campaigns..."
-                className="pl-8 pr-4 py-1.5 bg-gray-900/60 border border-gray-800 rounded-lg text-xs text-gray-300 w-48 focus:outline-none focus:border-orange-500 placeholder-gray-700"
-              />
-            </div>
-            <span className="text-xs text-gray-600">
-              {filteredCampaigns.length} campaign
-              {filteredCampaigns.length !== 1 ? "s" : ""}
-            </span>
+            <h2 className="text-lg font-bold text-white">Generated Machines</h2>
+            <span className="text-xs text-gray-600 ml-1">({staffMachines.length})</span>
           </div>
 
-          {loadingCampaigns ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader className="w-7 h-7 text-orange-500 animate-spin" />
+          {loadingMachines ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader className="w-6 h-6 text-blue-400 animate-spin" />
             </div>
-          ) : filteredCampaigns.length === 0 ? (
-            <div className="rounded-xl border border-gray-900 bg-gray-950/50 py-16 text-center">
-              <Target className="w-12 h-12 text-gray-800 mx-auto mb-3" />
-              <p className="text-gray-600 text-sm">
-                No campaigns yet — click{" "}
-                <span className="text-orange-500 font-semibold">
-                  New Campaign
-                </span>{" "}
-                to get started
-              </p>
+          ) : staffMachines.length === 0 ? (
+            <div className="rounded-xl border border-gray-800/60 bg-gray-950/50 p-8 text-center">
+              <Server className="w-8 h-8 text-gray-700 mx-auto mb-2" />
+              <p className="text-gray-600 text-sm">No generated machines yet. Use the Vuln AI to generate machines.</p>
             </div>
           ) : (
-            <div className="rounded-xl border border-gray-900 bg-gray-950/50 overflow-hidden">
-              {filteredCampaigns.map((campaign, idx) => {
-                const pct = Math.round(campaign.progress_percentage || 0);
-                const isComplete = pct >= 100;
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {staffMachines.map((machine) => {
+                const isRunning = machine.container?.status === "running";
+                const isAssigned = machine.assigned;
+                const diffMap = { easy: "#10b981", medium: "#f59e0b", hard: "#ef4444" };
+                const diffColor = diffMap[machine.difficulty] || "#6b7280";
+
                 return (
-                  <div
-                    key={campaign.campaign_id}
-                    className="anim-row"
-                    style={{ animationDelay: `${idx * 0.04}s` }}
-                  >
-                    <div
-                      onClick={() => navigateToCampaign(campaign.campaign_id)}
-                      className={`flex items-center gap-4 px-5 py-4 border-b border-gray-900/60 last:border-0 cursor-pointer transition-colors group
-                        ${isComplete ? "hover:bg-green-500/4" : "hover:bg-gray-900/30"}`}
-                    >
-                      <div className="relative flex-shrink-0">
-                        <ProgressRing
-                          pct={pct}
-                          color={isComplete ? "#10b981" : "#ff7300"}
-                        />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          {isComplete ? (
-                            <CheckCircle className="w-5 h-5 text-green-500" />
-                          ) : (
-                            <span className="text-xs font-bold text-white tabular-nums">
-                              {pct}%
-                            </span>
-                          )}
-                        </div>
+                  <div key={machine.machine_id}
+                    className="rounded-xl border border-gray-800/60 bg-gray-950/50 hover:border-gray-700/60 transition-all p-4 anim-row">
+                    {/* Top: CVE + Status */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-4 h-4 text-blue-400" />
+                        <span className="text-sm font-semibold text-white">{machine.cve_id || "Unknown"}</span>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2.5 mb-0.5">
-                          <h3
-                            className={`text-sm font-bold transition-colors ${isComplete ? "text-green-400" : "text-gray-100 group-hover:text-orange-400"}`}
-                          >
-                            {campaign.campaign_name || "Unnamed Campaign"}
-                          </h3>
-                          <span
-                            className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                            style={{
-                              color: getDiffColor(campaign.difficulty),
-                              background:
-                                getDiffColor(campaign.difficulty) + "18",
-                            }}
-                          >
-                            Level {campaign.difficulty}
-                          </span>
-                          {isComplete && (
-                            <span className="text-xs text-green-500 font-semibold">
-                              ✓ Complete
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 text-xs text-gray-600">
-                          <span>{campaign.machine_count} machines</span>
-                          <span>·</span>
-                          <span>{campaign.machines_solved || 0} solved</span>
-                          {campaign.created_at && (
-                            <>
-                              <span>·</span>
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-2.5 h-2.5" />{" "}
-                                {new Date(
-                                  campaign.created_at,
-                                ).toLocaleDateString()}
-                              </span>
-                            </>
-                          )}
-                        </div>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${isRunning
+                        ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/30"
+                        : "text-gray-500 bg-gray-500/10 border-gray-500/30"
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? "bg-emerald-400" : "bg-gray-600"}`} />
+                        {isRunning ? "Running" : "Stopped"}
+                      </span>
+                    </div>
+
+                    {/* Info row */}
+                    <div className="flex items-center gap-3 text-xs text-gray-500 mb-3">
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase" style={{ color: diffColor, background: `${diffColor}15`, border: `1px solid ${diffColor}30` }}>
+                        {machine.difficulty || "medium"}
+                      </span>
+                      <span className="text-gray-700">·</span>
+                      <span className="font-mono text-gray-600">{machine.machine_id?.slice(0, 16)}</span>
+                      {machine.created_at && (
+                        <>
+                          <span className="text-gray-700">·</span>
+                          <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" />{new Date(machine.created_at).toLocaleDateString()}</span>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Port + URL */}
+                    {machine.port && (
+                      <div className="text-xs text-gray-600 mb-3 flex items-center gap-1 font-mono">
+                        <ExternalLink className="w-3 h-3" /> Port {machine.port}
                       </div>
-                      <ArrowUpRight className="w-4 h-4 text-gray-700 group-hover:text-orange-500 transition-colors" />
+                    )}
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-800/40">
+                      {isAssigned ? (
+                        <button onClick={() => navigate("/assignments")}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/25 hover:bg-blue-500/20 transition-all">
+                          VIEW ASSIGNMENT <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      ) : (
+                        <button onClick={() => openAssignModal(machine.machine_id)}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 hover:bg-emerald-500/20 transition-all">
+                          <Send className="w-3 h-3" /> Assign
+                        </button>
+                      )}
+                      <button onClick={() => setDeleteTarget(machine.machine_id)}
+                        className="flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-xs font-semibold text-red-400 bg-red-500/10 border border-red-500/25 hover:bg-red-500/20 transition-all">
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
                   </div>
                 );
@@ -560,6 +217,78 @@ const Campaigns = () => {
             </div>
           )}
         </div>
+
+        {/* ── Delete Confirm Overlay ── */}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+            <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 max-w-sm w-full mx-4">
+              <h3 className="text-lg font-bold text-white mb-2">Delete Machine?</h3>
+              <p className="text-gray-500 text-sm mb-5">This will stop the container and remove all files. This action cannot be undone.</p>
+              <div className="flex gap-3">
+                <button onClick={() => setDeleteTarget(null)}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold text-gray-400 bg-gray-800 hover:bg-gray-700 transition-colors">Cancel</button>
+                <button onClick={() => handleDeleteMachine(deleteTarget)} disabled={deleting}
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-red-600 hover:bg-red-500 transition-colors disabled:opacity-50">
+                  {deleting ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Assign Modal ── */}
+        {showAssignModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
+            <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 max-w-md w-full mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white">Assign to Class</h3>
+                <button onClick={() => { setShowAssignModal(false); setAssignSuccess(null); }}
+                  className="text-gray-500 hover:text-white transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {assignSuccess ? (
+                <div className="text-center py-6">
+                  <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+                  <p className="text-emerald-400 font-semibold mb-1">Assignment Created!</p>
+                  <p className="text-gray-500 text-sm">{assignSuccess}</p>
+                  <button onClick={() => { setShowAssignModal(false); setAssignSuccess(null); }}
+                    className="mt-4 px-6 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors">Done</button>
+                </div>
+              ) : loadingClasses ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader className="w-6 h-6 text-blue-400 animate-spin" />
+                </div>
+              ) : classes.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 text-sm">No classes found. Create a class first in the Students page.</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-gray-500 text-sm mb-3">Select a class to assign this machine to:</p>
+                  <div className="space-y-2 max-h-60 overflow-y-auto" style={{ scrollbarWidth: "thin", scrollbarColor: "#333 transparent" }}>
+                    {classes.map((cls) => (
+                      <button key={cls.class_name}
+                        onClick={() => setSelectedClass(cls.class_name)}
+                        className={`w-full text-left px-4 py-3 rounded-xl border transition-all ${selectedClass === cls.class_name
+                          ? "bg-blue-500/10 border-blue-500/40 text-white"
+                          : "bg-gray-900/50 border-gray-800 text-gray-400 hover:border-gray-700"
+                          }`}>
+                        <span className="font-semibold text-sm">{cls.class_name}</span>
+                        <span className="text-xs text-gray-600 ml-2">{cls.student_count} students</span>
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={handleAssign} disabled={!selectedClass || assigning}
+                    className="w-full mt-4 px-4 py-2.5 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    {assigning ? <><Loader className="w-4 h-4 animate-spin" /> Assigning...</> : <>Assign Machine</>}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

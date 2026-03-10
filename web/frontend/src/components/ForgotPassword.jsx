@@ -80,47 +80,7 @@ const ForgotPassword = () => {
             />
             <GridBg />
 
-            <style>{`
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        .fade-up   { animation: fadeUp 0.45s ease both; }
-        .fade-up-1 { animation: fadeUp 0.45s ease 0.05s both; }
-        .fade-up-2 { animation: fadeUp 0.45s ease 0.10s both; }
-        .fade-up-3 { animation: fadeUp 0.45s ease 0.15s both; }
 
-        .input-field {
-          width: 100%;
-          padding: 0.65rem 0.875rem 0.65rem 2.5rem;
-          background: #0a0a0a;
-          border: 1px solid #1f1f1f;
-          border-radius: 0.625rem;
-          color: #fff;
-          font-size: 0.875rem;
-          outline: none;
-          transition: border-color 0.2s;
-        }
-        .input-field::placeholder { color: #3f3f3f; }
-        .input-field:focus { border-color: #ff7300; }
-
-        .primary-btn {
-          width: 100%;
-          padding: 0.7rem;
-          background: #ff7300;
-          color: #fff;
-          font-size: 0.875rem;
-          font-weight: 700;
-          border: none;
-          border-radius: 0.625rem;
-          cursor: pointer;
-          transition: background 0.2s, transform 0.1s;
-          display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-        }
-        .primary-btn:hover:not(:disabled) { background: #e66a00; }
-        .primary-btn:active:not(:disabled) { transform: scale(0.98); }
-        .primary-btn:disabled { background: #4a3000; cursor: not-allowed; }
-      `}</style>
 
             {/* Card */}
             <div className="relative z-10 w-full max-w-sm mx-4">
@@ -130,7 +90,7 @@ const ForgotPassword = () => {
                     <div className="w-14 h-14 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center mx-auto mb-4">
                         <Shield className="w-7 h-7 text-orange-500" />
                     </div>
-                    <h1 className="text-2xl font-bold text-white tracking-tight">HackForge</h1>
+                    <h1 className="text-2xl font-bold text-white tracking-tight">ctfWithAi</h1>
                     <p className="text-gray-600 text-sm mt-1">
                         {submitted ? 'Check your inbox' : 'Reset your password'}
                     </p>

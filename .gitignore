@@ -20,3 +20,9 @@ node_modules/
 # OS files
 .DS_Store
 Thumbs.db
+
+# AgentProtector
+AgentProtector.md
+
+# yaml files
+zap.yaml

@@ -247,7 +247,7 @@ const Register = ({ onRegisterSuccess }) => {
                     <div className="w-14 h-14 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center mx-auto mb-4">
                         <Shield className="w-7 h-7 text-orange-500" />
                     </div>
-                    <h1 className="text-2xl font-bold text-white tracking-tight">HackForge</h1>
+                    <h1 className="text-2xl font-bold text-white tracking-tight">ctfWithAi</h1>
                     <p className="text-gray-600 text-sm mt-1">
                         {step === 'form' && 'Create your account'}
                         {step === 'otp' && 'Verify your email'}

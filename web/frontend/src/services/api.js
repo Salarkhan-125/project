@@ -3,7 +3,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 // ─── Flag validation constants (must mirror flags.py exactly) ────────────────
 const FLAG_MAX_LENGTH = 50;
-const FLAG_PATTERN = /^HACKFORGE\{[a-zA-Z0-9_\-.!@#$%^&*()[\]+=?/,]{1,40}\}$/;
+const FLAG_PATTERN = /^CTFWITHAI\{[a-zA-Z0-9_\-.!@#$%^&*()[\]+=?/,]{1,40}\}$/;
 
 
 // ─── Frontend flag validator ──────────────────────────────────────────────────
@@ -34,7 +34,7 @@ const validateFlagLocally = (rawFlag) => {
   if (!FLAG_PATTERN.test(cleaned)) {
     return {
       valid: false,
-      error: 'Invalid flag format. Expected: HACKFORGE{...}',
+      error: 'Invalid flag format. Expected: CTFWITHAI{...}',
     };
   }
 
@@ -285,6 +285,62 @@ class APIService {
   // ── Health Check ──────────────────────────────────────────────────────────────
   async healthCheck() {
     return this.request('/health');
+  }
+
+  // ── Staff Machines (Enterprise) ──────────────────────────────────────────────
+  async getStaffMachines() {
+    return this.request('/api/machines/staff/list');
+  }
+
+  async deleteMachine(machineId) {
+    return this.request(`/api/machines/${machineId}`, { method: 'DELETE' });
+  }
+
+  // ── Assignments (Enterprise Staff) ───────────────────────────────────────────
+  async assignMachine(machineId, className) {
+    return this.request('/api/enterprise/assignments/assign', {
+      method: 'POST',
+      body: JSON.stringify({ machine_id: machineId, class_name: className }),
+    });
+  }
+
+  async getAssignments() {
+    return this.request('/api/enterprise/assignments/');
+  }
+
+  async getAssignmentDetails(assignmentId) {
+    return this.request(`/api/enterprise/assignments/${assignmentId}/details`);
+  }
+
+  async getAssignmentCredentials(assignmentId) {
+    return this.request(`/api/enterprise/assignments/${assignmentId}/credentials`);
+  }
+
+  async startStudentMachine(assignmentId, instanceId) {
+    return this.request(`/api/enterprise/assignments/${assignmentId}/instances/${instanceId}/start`, {
+      method: 'POST',
+    });
+  }
+
+  async stopStudentMachine(assignmentId, instanceId) {
+    return this.request(`/api/enterprise/assignments/${assignmentId}/instances/${instanceId}/stop`, {
+      method: 'POST',
+    });
+  }
+
+  async submitStudentFlag(instanceId, flag) {
+    return this.request(`/api/enterprise/assignments/${instanceId}/submit-flag`, {
+      method: 'POST',
+      body: JSON.stringify({ flag }),
+    });
+  }
+
+  // ── Student Login ────────────────────────────────────────────────────────────
+  async studentLogin(accountId, password) {
+    return this.request('/api/auth/student-login', {
+      method: 'POST',
+      body: JSON.stringify({ account_id: accountId, password }),
+    });
   }
 }
 

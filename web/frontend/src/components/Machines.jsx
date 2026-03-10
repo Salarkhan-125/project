@@ -535,7 +535,7 @@ const Machines = () => {
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        placeholder="HACKFORGE{...}"
+                        placeholder="CTFWITHAI{...}"
                         value={selectedMachine === machine.machine_id ? flagInput : ''}
                         onFocus={() => {
                           setSelectedMachine(machine.machine_id);

@@ -8,6 +8,19 @@ const Leaderboard = () => {
   const [error, setError] = useState(null);
   const [timeframe, setTimeframe] = useState('all_time');
 
+  const [role] = useState(() => localStorage.getItem('role') || 'individual');
+  const isEnterprise = role.startsWith('enterprise_');
+
+  // Theme Constants
+  const themeTrophyClass = isEnterprise ? 'text-blue-400' : 'text-yellow-500';
+  const rank1Class = isEnterprise ? 'from-blue-400/20 to-blue-500/5 border-blue-400/50' : 'from-yellow-500/20 to-yellow-600/5 border-yellow-500/50';
+  const rank3Class = isEnterprise ? 'from-blue-600/20 to-blue-700/5 border-blue-600/50' : 'from-orange-500/20 to-orange-600/5 border-orange-500/50';
+  const rank3IconClass = isEnterprise ? 'text-blue-600' : 'text-orange-600';
+  const textPrimaryClass = isEnterprise ? 'text-blue-500' : 'text-orange-500';
+  const bgPrimaryClass = isEnterprise ? 'bg-blue-500' : 'bg-orange-500';
+  const bgPrimaryHoverClass = isEnterprise ? 'hover:bg-blue-600' : 'hover:bg-orange-600';
+  const titleGradientClass = isEnterprise ? 'from-white via-blue-400 to-blue-600' : 'from-white via-yellow-500 to-yellow-600';
+
   useEffect(() => { fetchLeaderboard(); fetchFirstBloods(); }, [timeframe]);
 
   const [firstBloods, setFirstBloods] = React.useState({});
@@ -25,7 +38,9 @@ const Leaderboard = () => {
         if (e.first_blood) counts[e.user_id] = (counts[e.user_id] || 0) + 1;
       });
       setFirstBloods(counts);
-    } catch (_) {}
+    } catch (err) {
+      console.warn("Failed to fetch first bloods:", err);
+    }
   };
 
   const fetchLeaderboard = async () => {
@@ -41,16 +56,16 @@ const Leaderboard = () => {
   };
 
   const getRankIcon = (rank) => {
-    if (rank === 1) return <Trophy className="w-6 h-6 text-yellow-500" />;
+    if (rank === 1) return <Trophy className={`w-6 h-6 ${themeTrophyClass}`} />;
     if (rank === 2) return <Medal className="w-6 h-6 text-gray-400" />;
-    if (rank === 3) return <Award className="w-6 h-6 text-orange-600" />;
+    if (rank === 3) return <Award className={`w-6 h-6 ${rank3IconClass}`} />;
     return null;
   };
 
   const getRankColor = (rank) => {
-    if (rank === 1) return 'from-yellow-500/20 to-yellow-600/5 border-yellow-500/50';
+    if (rank === 1) return rank1Class;
     if (rank === 2) return 'from-gray-400/20 to-gray-500/5 border-gray-400/50';
-    if (rank === 3) return 'from-orange-500/20 to-orange-600/5 border-orange-500/50';
+    if (rank === 3) return rank3Class;
     return 'from-gray-900/50 to-black/50 border-gray-800';
   };
 
@@ -58,7 +73,7 @@ const Leaderboard = () => {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <Loader className="w-12 h-12 text-orange-500 animate-spin mx-auto mb-4" />
+          <Loader className={`w-12 h-12 ${textPrimaryClass} animate-spin mx-auto mb-4`} />
           <p className="text-gray-400">Loading leaderboard...</p>
         </div>
       </div>
@@ -73,7 +88,7 @@ const Leaderboard = () => {
           <h2 className="text-2xl font-bold text-white mb-2">Error Loading Leaderboard</h2>
           <p className="text-gray-400 mb-6">{error}</p>
           <button onClick={fetchLeaderboard}
-            className="px-6 py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors">
+            className={`px-6 py-3 ${bgPrimaryClass} ${bgPrimaryHoverClass} text-white rounded-lg transition-colors`}>
             Retry
           </button>
         </div>
@@ -86,7 +101,7 @@ const Leaderboard = () => {
       <div className="max-w-5xl mx-auto px-6 py-8">
 
         <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-white via-yellow-500 to-yellow-600 bg-clip-text text-transparent">
+          <h1 className={`text-4xl font-bold mb-2 bg-gradient-to-r ${titleGradientClass} bg-clip-text text-transparent`}>
             Global Leaderboard
           </h1>
           <p className="text-gray-400">Top hackers ranked by their achievements</p>
@@ -96,11 +111,10 @@ const Leaderboard = () => {
         <div className="flex gap-2 mb-8">
           {['all_time', 'monthly', 'weekly'].map((tf) => (
             <button key={tf} onClick={() => setTimeframe(tf)}
-              className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${
-                timeframe === tf
-                  ? 'bg-orange-500 text-white'
-                  : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
-              }`}>
+              className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 ${timeframe === tf
+                ? `${bgPrimaryClass} text-white`
+                : 'bg-gray-900 text-gray-400 hover:bg-gray-800'
+                }`}>
               {tf.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
             </button>
           ))}
@@ -117,7 +131,7 @@ const Leaderboard = () => {
             {leaderboard.map((entry, index) => (
               <div key={entry.user_id || index}
                 className={`relative rounded-2xl border bg-gradient-to-r p-6 transition-all duration-300 hover:scale-[1.02] ${getRankColor(index + 1)}`}
-                style={{ animation: `slideUp 0.4s ease-out ${index * 0.05}s both` }}>
+                style={{ animation: `slideUp 0.4s ease-out ${Math.min(index, 10) * 0.05}s both` }}>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="flex items-center justify-center w-12 h-12">
@@ -141,7 +155,7 @@ const Leaderboard = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-3xl font-bold text-orange-500">
+                    <div className={`text-3xl font-bold ${textPrimaryClass}`}>
                       {entry.total_points || 0}
                     </div>
                     <p className="text-xs text-gray-400">points</p>
@@ -165,12 +179,7 @@ const Leaderboard = () => {
         )}
       </div>
 
-      <style>{`
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+
     </div>
   );
 };

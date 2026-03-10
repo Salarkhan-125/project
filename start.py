@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HackForge Platform Startup Script (Cross-Platform, Linux-first)
+ctfWithAi Platform Startup Script (Cross-Platform, Linux-first)
 Starts: MySQL → API Server → LabApp
 """
 
@@ -9,7 +9,13 @@ import sys
 import time
 import subprocess
 import urllib.request
+import io
 from pathlib import Path
+
+# Force UTF-8 stdout/stderr for Windows cmd/powershell
+if sys.platform == "win32":
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 try:
     from dotenv import load_dotenv
@@ -266,7 +272,7 @@ def show_summary():
     host = SERVER_HOST
     print()
     print("╔═══════════════════════════════════════════════════════════╗")
-    print("║              HACKFORGE IS NOW RUNNING                     ║")
+    print("║              CTFWITHAI IS NOW RUNNING                     ║")
     print("╚═══════════════════════════════════════════════════════════╝")
     print()
     cprint(GREEN, "  🌐 Services:")
@@ -296,7 +302,7 @@ def _tail_log(path, lines=20):
 def main():
     print()
     print("╔═══════════════════════════════════════════════════════════╗")
-    print("║         HACKFORGE PLATFORM STARTUP (VulnForge)            ║")
+    print("║         CTFWITHAI PLATFORM STARTUP (VulnForge)            ║")
     print(f"║              Server: {SERVER_HOST:<38}║")
     print("╚═══════════════════════════════════════════════════════════╝")
     print()

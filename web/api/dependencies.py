@@ -1,5 +1,5 @@
 """
-Shared dependencies for HackForge API
+Shared dependencies for ctfWithAi API
 
 Two database systems run in parallel — they serve different purposes
 and must never replace each other:
